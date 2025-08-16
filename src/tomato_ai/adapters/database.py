@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from tomato_ai.config import settings
 
 def get_engine():
-    return create_engine(settings.DATABASE_URL)
+    return create_engine(settings.database_url)
 
 def get_session():
     engine = get_engine()
