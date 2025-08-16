@@ -49,4 +49,7 @@ jobs:
           NOMAD_TOKEN: ${{ secrets.NOMAD_TOKEN }}
         run: |
           echo "Updating Nomad variable with new image tag: ${{ github.sha }}"
-          nomad var put -force nomad/jobs/tomato-ai image_tag=${{ github.sha }}
+          nomad var put -force nomad/jobs/tomato-ai \
+          image_tag=${{ github.sha }} \
+          telegram_bot_token=${{ secrets.TELEGRAM_BOT_TOKEN }} \
+          telegram_user_id=${{ secrets.TELEGRAM_USER_ID }}
