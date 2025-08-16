@@ -14,13 +14,13 @@ from tomato_ai.config import settings
 @pytest.fixture(autouse=True)
 def override_settings(monkeypatch, tmp_path):
     db_path = tmp_path / "test.db"
-    monkeypatch.setattr(settings, "DATABASE_URL", f"sqlite:///{db_path}")
+    monkeypatch.setattr(settings, "TEST_DATABASE_URL", f"sqlite:///{db_path}")
 
 
 @pytest.fixture(name="session")
 def session_fixture():
     engine = create_engine(
-        settings.DATABASE_URL,
+        settings.database_url,
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
