@@ -1,8 +1,10 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID, uuid4
+
+from tomato_ai.domain import events as domain_events
 
 
 @dataclass(frozen=True)
@@ -19,6 +21,7 @@ class PomodoroSession:
     """
     An entity representing a Pomodoro session.
     """
+
     user_id: UUID
     session_id: UUID = field(default_factory=uuid4)
     start_time: Optional[datetime] = None
@@ -26,6 +29,7 @@ class PomodoroSession:
     state: str = "pending"
     duration: timedelta = timedelta(minutes=25)
     task_id: Optional[UUID] = None
+    events: list[domain_events.Event] = field(default_factory=list)
 
     def start(self):
         """
@@ -35,6 +39,9 @@ class PomodoroSession:
             raise ValueError("Session has already started")
         self.state = "active"
         self.start_time = datetime.now()
+        self.events.append(
+            domain_events.SessionStarted(session_id=self.session_id, user_id=self.user_id)
+        )
 
     def complete(self):
         """
@@ -44,6 +51,7 @@ class PomodoroSession:
             raise ValueError("Session is not active")
         self.state = "completed"
         self.end_time = datetime.now()
+        self.events.append(domain_events.SessionCompleted(session_id=self.session_id))
 
     def pause(self):
         """
@@ -52,6 +60,7 @@ class PomodoroSession:
         if self.state != "active":
             raise ValueError("Session is not active")
         self.state = "paused"
+        self.events.append(domain_events.SessionPaused(session_id=self.session_id))
 
     def resume(self):
         """
@@ -60,6 +69,7 @@ class PomodoroSession:
         if self.state != "paused":
             raise ValueError("Session is not paused")
         self.state = "active"
+        self.events.append(domain_events.SessionResumed(session_id=self.session_id))
 
 
 # Predefined session types

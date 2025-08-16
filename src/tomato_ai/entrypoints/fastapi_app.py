@@ -1,23 +1,24 @@
 from uuid import UUID
 
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from tomato_ai.adapters.database import get_engine, get_session
-from tomato_ai.adapters.orm import Base
-from tomato_ai.domain.services import SessionManager
-from tomato_ai.entrypoints.schemas import PomodoroSessionCreate, PomodoroSessionRead, PomodoroSessionUpdateState
+from tomato_ai.adapters.database import get_session
 from tomato_ai.adapters import orm
-from tomato_ai.domain import models
-from tomato_ai.config import settings
+from tomato_ai.entrypoints.schemas import (
+    PomodoroSessionCreate,
+    PomodoroSessionRead,
+    PomodoroSessionUpdateState,
+)
+from tomato_ai.service_layer import services, unit_of_work
 
 
-def lifespan(app: FastAPI):
-    yield
+def get_uow():
+    return unit_of_work.SqlAlchemyUnitOfWork()
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI()
 
     @app.get("/")
     def root():
@@ -26,27 +27,17 @@ def create_app() -> FastAPI:
     @app.post("/sessions/", response_model=PomodoroSessionRead)
     def create_session(
         session_data: PomodoroSessionCreate,
-        db_session: Session = Depends(get_session),
+        uow: unit_of_work.SqlAlchemyUnitOfWork = Depends(get_uow),
     ):
-        session_manager = SessionManager()
-        new_session = session_manager.start_new_session(
-            user_id=session_data.user_id, task_id=session_data.task_id
-        )
-
-        orm_session = orm.PomodoroSession(
-            session_id=new_session.session_id,
-            start_time=new_session.start_time,
-            end_time=new_session.end_time,
-            state=new_session.state,
-            duration=new_session.duration,
-            user_id=new_session.user_id,
-            task_id=new_session.task_id,
-        )
-
-        db_session.add(orm_session)
-        db_session.commit()
-        db_session.refresh(orm_session)
-        return orm_session
+        try:
+            session = services.create_session(
+                user_id=session_data.user_id,
+                task_id=session_data.task_id,
+                uow=uow,
+            )
+            return session
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
     @app.get("/sessions/{session_id}", response_model=PomodoroSessionRead)
     def get_session_by_id(
@@ -62,37 +53,18 @@ def create_app() -> FastAPI:
     def update_session_state(
         session_id: UUID,
         state_data: PomodoroSessionUpdateState,
-        db_session: Session = Depends(get_session),
+        uow: unit_of_work.SqlAlchemyUnitOfWork = Depends(get_uow),
     ):
-        orm_session = db_session.get(orm.PomodoroSession, session_id)
-        if orm_session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
-
-        domain_session = models.PomodoroSession(
-            user_id=orm_session.user_id,
-            session_id=orm_session.session_id,
-            start_time=orm_session.start_time,
-            end_time=orm_session.end_time,
-            state=orm_session.state,
-            duration=orm_session.duration,
-            task_id=orm_session.task_id,
-        )
-
         try:
-            if state_data.state == "paused":
-                domain_session.pause()
-            elif state_data.state == "resumed":
-                domain_session.resume()
-            elif state_data.state == "completed":
-                domain_session.complete()
+            session = services.update_session_state(
+                session_id=session_id,
+                state=state_data.state,
+                uow=uow,
+            )
+            return session
+        except services.SessionNotFound as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-
-        orm_session.state = domain_session.state
-        orm_session.end_time = domain_session.end_time
-
-        db_session.commit()
-        db_session.refresh(orm_session)
-        return orm_session
 
     return app
