@@ -5,11 +5,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from tomato_ai.entrypoints.fastapi_app import create_app, get_uow
+from tomato_ai.entrypoints.fastapi_app import create_app
 from tomato_ai.adapters.database import get_session
 from tomato_ai.adapters.orm import Base
 from tomato_ai.config import settings
-from tomato_ai.service_layer.unit_of_work import SqlAlchemyUnitOfWork
 
 
 @pytest.fixture(autouse=True)
@@ -43,10 +42,6 @@ def client_fixture(session):
     def override_get_db():
         yield session
 
-    def override_get_uow():
-        yield SqlAlchemyUnitOfWork(session_factory=lambda: session)
-
     app = create_app()
     app.dependency_overrides[get_session] = override_get_db
-    app.dependency_overrides[get_uow] = override_get_uow
     yield TestClient(app)

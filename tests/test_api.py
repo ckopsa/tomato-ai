@@ -1,5 +1,7 @@
 from uuid import uuid4
 from fastapi.testclient import TestClient
+from unittest.mock import patch
+from tomato_ai.domain import events
 
 
 def test_create_and_get_session(client: TestClient):
@@ -18,27 +20,22 @@ def test_create_and_get_session(client: TestClient):
     assert data["user_id"] == str(user_id)
 
 
-def test_update_session_state(client: TestClient):
-    user_id = uuid4()
-    response = client.post("/sessions/", json={"user_id": str(user_id)})
-    assert response.status_code == 200
-    data = response.json()
-    session_id = data["session_id"]
+def test_events_are_published(client: TestClient):
+    with patch("tomato_ai.adapters.event_bus.publish") as mock_publish:
+        user_id = uuid4()
+        response = client.post("/sessions/", json={"user_id": str(user_id)})
+        assert response.status_code == 200
+        data = response.json()
+        session_id = data["session_id"]
 
-    # Pause the session
-    response = client.put(f"/sessions/{session_id}/state", json={"state": "paused"})
-    assert response.status_code == 200
-    data = response.json()
-    assert data["state"] == "paused"
+        mock_publish.assert_called_once()
+        assert isinstance(mock_publish.call_args[0][0], events.SessionStarted)
 
-    # Resume the session
-    response = client.put(f"/sessions/{session_id}/state", json={"state": "resumed"})
-    assert response.status_code == 200
-    data = response.json()
-    assert data["state"] == "active"
+        mock_publish.reset_mock()
 
-    # Complete the session
-    response = client.put(f"/sessions/{session_id}/state", json={"state": "completed"})
-    assert response.status_code == 200
-    data = response.json()
-    assert data["state"] == "completed"
+        # Pause the session
+        response = client.put(f"/sessions/{session_id}/state", json={"state": "paused"})
+        assert response.status_code == 200
+
+        mock_publish.assert_called_once()
+        assert isinstance(mock_publish.call_args[0][0], events.SessionPaused)

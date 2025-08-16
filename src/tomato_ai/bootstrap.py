@@ -1,6 +1,6 @@
 from tomato_ai.domain import events
-from tomato_ai.service_layer import event_bus, handlers
-
+from tomato_ai.adapters import event_bus
+from tomato_ai import handlers
 
 def bootstrap():
     """

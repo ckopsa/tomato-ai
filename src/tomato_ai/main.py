@@ -1,7 +1,7 @@
 import logging
 
 from tomato_ai.entrypoints.fastapi_app import create_app
-from tomato_ai.service_layer import bootstrap
+from tomato_ai import bootstrap
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
