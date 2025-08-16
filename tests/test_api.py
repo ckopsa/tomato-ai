@@ -2,6 +2,12 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 
+def test_health_check(client: TestClient):
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy"}
+
+
 def test_create_and_get_session(client: TestClient):
     user_id = uuid4()
     response = client.post("/sessions/", json={"user_id": str(user_id)})

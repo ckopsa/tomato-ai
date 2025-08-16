@@ -23,6 +23,10 @@ def create_app() -> FastAPI:
     def root():
         return {"message": "Hello Tomato AI"}
 
+    @app.get("/health")
+    def health():
+        return {"status": "healthy"}
+
     @app.post("/sessions/", response_model=PomodoroSessionRead)
     def create_session(
         session_data: PomodoroSessionCreate,
