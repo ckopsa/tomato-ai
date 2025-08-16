@@ -4,6 +4,9 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID, uuid4
 
+from tomato_ai.adapters import event_bus
+from tomato_ai.domain import events
+
 
 @dataclass(frozen=True)
 class SessionType:
@@ -35,6 +38,7 @@ class PomodoroSession:
             raise ValueError("Session has already started")
         self.state = "active"
         self.start_time = datetime.now()
+        event_bus.publish(events.SessionStarted(session_id=self.session_id, user_id=self.user_id))
 
     def complete(self):
         """
@@ -44,6 +48,7 @@ class PomodoroSession:
             raise ValueError("Session is not active")
         self.state = "completed"
         self.end_time = datetime.now()
+        event_bus.publish(events.SessionCompleted(session_id=self.session_id))
 
     def pause(self):
         """
@@ -52,6 +57,7 @@ class PomodoroSession:
         if self.state != "active":
             raise ValueError("Session is not active")
         self.state = "paused"
+        event_bus.publish(events.SessionPaused(session_id=self.session_id))
 
     def resume(self):
         """
@@ -60,6 +66,7 @@ class PomodoroSession:
         if self.state != "paused":
             raise ValueError("Session is not paused")
         self.state = "active"
+        event_bus.publish(events.SessionResumed(session_id=self.session_id))
 
 
 # Predefined session types
