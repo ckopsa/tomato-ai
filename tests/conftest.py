@@ -44,4 +44,5 @@ def client_fixture(session):
 
     app = create_app()
     app.dependency_overrides[get_session] = override_get_db
-    yield TestClient(app)
+    with TestClient(app) as client:
+        yield client

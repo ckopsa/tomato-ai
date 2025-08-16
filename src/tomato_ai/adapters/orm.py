@@ -15,6 +15,8 @@ class PomodoroSession(Base):
     duration = Column(Interval, nullable=False)
     user_id = Column(Uuid, nullable=False)
     task_id = Column(Uuid, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    remaining_duration_on_pause = Column(Interval, nullable=True)
 
 
 def start_mappers():

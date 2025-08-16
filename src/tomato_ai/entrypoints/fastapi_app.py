@@ -1,10 +1,11 @@
+import asyncio
+from contextlib import asynccontextmanager
 from uuid import UUID
 
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from tomato_ai.adapters.database import get_engine, get_session
-from tomato_ai.adapters.orm import Base
+from tomato_ai.adapters import database
 from tomato_ai.domain.services import SessionManager
 from tomato_ai.entrypoints.schemas import PomodoroSessionCreate, PomodoroSessionRead, PomodoroSessionUpdateState
 from tomato_ai.adapters import orm, telegram, event_bus
@@ -12,12 +13,34 @@ from tomato_ai.domain import models, events
 from tomato_ai.config import settings
 
 
-def lifespan(app: FastAPI):
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    engine = database.get_engine()
+    orm.Base.metadata.create_all(engine)
+    app.state.db_engine = engine
+    app.state.session_manager = SessionManager(uow=database.SqlAlchemyUnitOfWork())
+    if settings.TELEGRAM_BOT_TOKEN:
+        app.state.telegram_notifier = telegram.TelegramNotifier(
+            token=settings.TELEGRAM_BOT_TOKEN,
+        )
+        await app.state.telegram_notifier.start()
+    event_bus.register(events.SessionCompleted, lambda e: print(f"Session completed: {e}"))
     yield
+    # Shutdown
+    if hasattr(app.state, "telegram_notifier") and app.state.telegram_notifier:
+        await app.state.telegram_notifier.stop()
 
 
 def create_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan)
+
+    def get_session_manager(request: Request) -> SessionManager:
+        return request.app.state.session_manager
+
+    def get_session():
+        with Session(app.state.db_engine) as session:
+            yield session
 
     @app.get("/")
     def root():
@@ -31,10 +54,12 @@ def create_app() -> FastAPI:
     def create_session(
         session_data: PomodoroSessionCreate,
         db_session: Session = Depends(get_session),
+        session_manager: SessionManager = Depends(get_session_manager),
     ):
-        session_manager = SessionManager()
         new_session = session_manager.start_new_session(
-            user_id=session_data.user_id, task_id=session_data.task_id
+            user_id=session_data.user_id,
+            task_id=session_data.task_id,
+            duration=session_data.duration,
         )
 
         orm_session = orm.PomodoroSession(
@@ -45,6 +70,7 @@ def create_app() -> FastAPI:
             duration=new_session.duration,
             user_id=new_session.user_id,
             task_id=new_session.task_id,
+            expires_at=new_session.expires_at,
         )
 
         db_session.add(orm_session)
@@ -80,6 +106,8 @@ def create_app() -> FastAPI:
             state=orm_session.state,
             duration=orm_session.duration,
             task_id=orm_session.task_id,
+            expires_at=orm_session.expires_at,
+            remaining_duration_on_pause=orm_session.remaining_duration_on_pause,
         )
 
         original_state = domain_session.state
@@ -95,6 +123,10 @@ def create_app() -> FastAPI:
 
         orm_session.state = domain_session.state
         orm_session.end_time = domain_session.end_time
+        orm_session.expires_at = domain_session.expires_at
+        orm_session.remaining_duration_on_pause = (
+            domain_session.remaining_duration_on_pause
+        )
 
         db_session.commit()
         db_session.refresh(orm_session)

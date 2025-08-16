@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 class PomodoroSessionCreate(BaseModel):
     user_id: UUID
     task_id: Optional[UUID] = None
+    duration: Optional[int] = None
 
 
 class PomodoroSessionRead(BaseModel):
@@ -18,6 +19,8 @@ class PomodoroSessionRead(BaseModel):
     duration: timedelta
     user_id: UUID
     task_id: Optional[UUID] = None
+    expires_at: Optional[datetime] = None
+    remaining_duration_on_pause: Optional[timedelta] = None
 
     class Config:
         from_attributes = True
