@@ -5,9 +5,10 @@ from sqlalchemy.orm import Session
 
 from tomato_ai.adapters.database import get_engine, get_session
 from tomato_ai.adapters.orm import Base
+import asyncio
 from tomato_ai.domain.services import SessionManager
 from tomato_ai.entrypoints.schemas import PomodoroSessionCreate, PomodoroSessionRead, PomodoroSessionUpdateState
-from tomato_ai.adapters import orm
+from tomato_ai.adapters import orm, telegram
 from tomato_ai.domain import models
 from tomato_ai.config import settings
 
@@ -63,7 +64,7 @@ def create_app() -> FastAPI:
         return session
 
     @app.put("/sessions/{session_id}/state", response_model=PomodoroSessionRead)
-    def update_session_state(
+    async def update_session_state(
         session_id: UUID,
         state_data: PomodoroSessionUpdateState,
         db_session: Session = Depends(get_session),
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
             task_id=orm_session.task_id,
         )
 
+        original_state = domain_session.state
         try:
             if state_data.state == "paused":
                 domain_session.pause()
@@ -97,6 +99,19 @@ def create_app() -> FastAPI:
 
         db_session.commit()
         db_session.refresh(orm_session)
+
+        if (
+            original_state != "completed"
+            and domain_session.state == "completed"
+            and (notifier := telegram.get_telegram_notifier())
+            and settings.TELEGRAM_CHAT_ID
+        ):
+            asyncio.create_task(
+                notifier.send_message(
+                    chat_id=settings.TELEGRAM_CHAT_ID,
+                    message=f"Pomodoro session {domain_session.session_id} completed!",
+                )
+            )
         return orm_session
 
     return app

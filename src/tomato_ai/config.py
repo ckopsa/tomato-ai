@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     DB_NAME: str = "tomato-ai"
     TEST_DATABASE_URL: str | None = None
 
+    TELEGRAM_BOT_TOKEN: str | None = None
+    TELEGRAM_CHAT_ID: str | None = None
+
     @property
     def database_url(self) -> PostgresDsn:
         if self.TEST_DATABASE_URL:
