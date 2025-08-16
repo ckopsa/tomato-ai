@@ -35,8 +35,7 @@ def send_telegram_notification_on_start(event: events.SessionStarted):
     Sends a telegram notification when a session starts.
     """
     if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
-        loop = asyncio.get_running_loop()
-        loop.create_task(
+        asyncio.run(
             notifier.send_message(
                 chat_id=settings.TELEGRAM_CHAT_ID,
                 message=f"Pomodoro session {event.session_id} started!",
