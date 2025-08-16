@@ -5,11 +5,10 @@ from sqlalchemy.orm import Session
 
 from tomato_ai.adapters.database import get_engine, get_session
 from tomato_ai.adapters.orm import Base
-import asyncio
 from tomato_ai.domain.services import SessionManager
 from tomato_ai.entrypoints.schemas import PomodoroSessionCreate, PomodoroSessionRead, PomodoroSessionUpdateState
-from tomato_ai.adapters import orm, telegram
-from tomato_ai.domain import models
+from tomato_ai.adapters import orm, telegram, event_bus
+from tomato_ai.domain import models, events
 from tomato_ai.config import settings
 
 
@@ -100,18 +99,8 @@ def create_app() -> FastAPI:
         db_session.commit()
         db_session.refresh(orm_session)
 
-        if (
-            original_state != "completed"
-            and domain_session.state == "completed"
-            and (notifier := telegram.get_telegram_notifier())
-            and settings.TELEGRAM_CHAT_ID
-        ):
-            asyncio.create_task(
-                notifier.send_message(
-                    chat_id=settings.TELEGRAM_CHAT_ID,
-                    message=f"Pomodoro session {domain_session.session_id} completed!",
-                )
-            )
+        if original_state != "completed" and domain_session.state == "completed":
+            event_bus.publish(events.SessionCompleted(session_id=domain_session.session_id))
         return orm_session
 
     return app

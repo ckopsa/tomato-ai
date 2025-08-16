@@ -10,3 +10,5 @@ def bootstrap():
     event_bus.register(events.SessionCompleted, handlers.log_event)
     event_bus.register(events.SessionPaused, handlers.log_event)
     event_bus.register(events.SessionResumed, handlers.log_event)
+    event_bus.register(events.SessionCompleted, handlers.send_telegram_notification)
+    event_bus.register(events.SessionStarted, handlers.send_telegram_notification_on_start)
