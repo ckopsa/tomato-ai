@@ -1,20 +1,18 @@
 from uuid import UUID
 
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-
-from tomato_ai.adapters.database import get_engine, get_session
 from telegram import Update
 from telegram.ext import Application, CommandHandler
 
-from tomato_ai.adapters.orm import Base
+from tomato_ai import handlers
+from tomato_ai.adapters import orm, event_bus
+from tomato_ai.adapters.database import get_session
+from tomato_ai.config import settings
+from tomato_ai.domain import models
 from tomato_ai.domain.services import SessionManager, SessionNotifier
 from tomato_ai.entrypoints.schemas import PomodoroSessionCreate, PomodoroSessionRead, PomodoroSessionUpdateState
-from tomato_ai.adapters import orm, telegram, event_bus
-from tomato_ai.domain import models, events
-from tomato_ai import handlers
-from tomato_ai.config import settings
 
 
 async def run_scheduler():
@@ -24,7 +22,7 @@ async def run_scheduler():
 
 
 async def lifespan(app: FastAPI):
-    scheduler = BackgroundScheduler()
+    scheduler = AsyncIOScheduler()
     scheduler.add_job(run_scheduler, "interval", seconds=10)
     scheduler.start()
 
