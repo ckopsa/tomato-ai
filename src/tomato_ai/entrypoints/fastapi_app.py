@@ -31,9 +31,13 @@ async def lifespan(app: FastAPI):
     if settings.TELEGRAM_BOT_TOKEN:
         ptb_app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
         ptb_app.add_handler(CommandHandler("start", handlers.start_command))
+        await ptb_app.initialize()
         app.state.ptb_app = ptb_app
 
     yield
+
+    if settings.TELEGRAM_BOT_TOKEN:
+        await app.state.ptb_app.shutdown()
     scheduler.shutdown()
 
 
