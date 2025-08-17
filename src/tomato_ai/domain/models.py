@@ -40,7 +40,7 @@ class PomodoroSession:
         if self.state != "pending":
             raise ValueError("Session has already started")
         self.state = "active"
-        self.start_time = datetime.now()
+        self.start_time = datetime.utcnow()
         self.expires_at = self.start_time + self.duration
         self.events.append(events.SessionStarted(session_id=self.session_id, user_id=self.user_id))
 
@@ -51,7 +51,7 @@ class PomodoroSession:
         if self.state != "active":
             raise ValueError("Session is not active")
         self.state = "completed"
-        self.end_time = datetime.now()
+        self.end_time = datetime.utcnow()
         self.events.append(events.SessionCompleted(session_id=self.session_id))
 
     def pause(self):
@@ -61,7 +61,7 @@ class PomodoroSession:
         if self.state != "active":
             raise ValueError("Session is not active")
         self.state = "paused"
-        self.pause_start_time = datetime.now()
+        self.pause_start_time = datetime.utcnow()
         self.events.append(events.SessionPaused(session_id=self.session_id))
 
     def resume(self):
@@ -73,7 +73,7 @@ class PomodoroSession:
         if self.pause_start_time is None:
             raise ValueError("Session is not paused or pause_start_time is not set")
         self.state = "active"
-        paused_duration = datetime.now() - self.pause_start_time
+        paused_duration = datetime.utcnow() - self.pause_start_time
         self.total_paused_duration += paused_duration
         if self.expires_at:
             self.expires_at += paused_duration

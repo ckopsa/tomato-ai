@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(run_scheduler, "interval", seconds=10)
     scheduler.start()
 
-    if settings.TELEGRAM_BOT_TOKEN:
+    if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN != "dummy-token":
         ptb_app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
         ptb_app.add_handler(CommandHandler("start", handlers.start_command))
         await ptb_app.initialize()
@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if settings.TELEGRAM_BOT_TOKEN:
+    if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN != "dummy-token":
         await app.state.ptb_app.shutdown()
     scheduler.shutdown()
 

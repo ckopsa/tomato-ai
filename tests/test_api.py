@@ -49,9 +49,19 @@ async def test_events_are_published(client: TestClient):
         mock_publish.assert_awaited_once()
         assert isinstance(mock_publish.call_args[0][0], events.SessionPaused)
 
+from datetime import timezone
+from telegram.ext import Application
 @pytest.mark.asyncio
 async def test_telegram_webhook(client: TestClient):
-    with patch("telegram.ext.Application.process_update", new_callable=AsyncMock) as mock_process_update:
+    with patch("telegram.ext.ApplicationBuilder") as mock_builder:
+        mock_app = AsyncMock(spec=Application)
+        mock_builder.return_value.token.return_value.build.return_value = mock_app
+
+        # Mock the ptb_app on the client's app state
+        client.app.state.ptb_app = mock_app
+        client.app.state.ptb_app.bot = AsyncMock()
+        client.app.state.ptb_app.bot.defaults.tzinfo = timezone.utc
+
         update_data = {
             "update_id": 10000,
             "message": {
@@ -65,4 +75,4 @@ async def test_telegram_webhook(client: TestClient):
         response = client.post("/telegram/webhook", json=update_data)
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
-        mock_process_update.assert_awaited_once()
+        mock_app.process_update.assert_awaited_once()
