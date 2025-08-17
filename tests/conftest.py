@@ -1,9 +1,8 @@
-
 import pytest
 from fastapi.testclient import TestClient
+from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from tomato_ai.entrypoints.fastapi_app import create_app
 from tomato_ai.adapters.database import get_session
@@ -11,37 +10,32 @@ from tomato_ai.adapters.orm import Base
 from tomato_ai.config import settings
 
 
-@pytest.fixture(autouse=True)
-def override_settings(monkeypatch, tmp_path):
-    db_path = tmp_path / "test.db"
-    monkeypatch.setattr(settings, "TEST_DATABASE_URL", f"sqlite:///{db_path}")
+@pytest.fixture()
+def client():
+    with patch.object(settings, 'TELEGRAM_BOT_TOKEN', 'dummy-token'), \
+         patch("apscheduler.schedulers.background.BackgroundScheduler.start"), \
+         patch("apscheduler.schedulers.background.BackgroundScheduler.shutdown"):
 
+        test_engine = create_engine(
+            "sqlite:///file:memdb1?mode=memory&cache=shared&uri=true",
+            connect_args={"check_same_thread": False},
+        )
+        Base.metadata.create_all(bind=test_engine)
 
-@pytest.fixture(name="session")
-def session_fixture():
-    engine = create_engine(
-        settings.database_url,
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
-    Base.metadata.create_all(bind=engine)
+        def override_get_session():
+            try:
+                db = TestingSessionLocal()
+                yield db
+            finally:
+                db.close()
 
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
+        app = create_app()
+        app.dependency_overrides[get_session] = override_get_session
 
+        with TestClient(app) as c:
+            yield c
 
-@pytest.fixture(name="client")
-def client_fixture(session):
-    def override_get_db():
-        yield session
-
-    app = create_app()
-    app.dependency_overrides[get_session] = override_get_db
-    yield TestClient(app)
+        Base.metadata.drop_all(bind=test_engine)
+        app.dependency_overrides.clear()

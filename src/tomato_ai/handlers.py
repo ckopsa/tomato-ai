@@ -1,11 +1,18 @@
 import asyncio
 import logging
+from uuid import UUID
 
 from strands import Agent
-from tomato_ai.adapters import telegram
+from telegram import Update
+from telegram.ext import CallbackContext
+
+from tomato_ai.adapters import telegram, orm, event_bus
 from tomato_ai.config import settings
 from tomato_ai.domain import events
 from tomato_ai.agents import turbo_20_ollama_model
+from tomato_ai.domain.services import SessionManager
+from tomato_ai.adapters.database import get_session
+
 
 agent = Agent(
     model=turbo_20_ollama_model,
@@ -28,40 +35,82 @@ def log_event(event: events.Event):
     logger.info(f"Handled event: {event}")
 
 
-def send_telegram_notification(event: events.SessionCompleted):
+async def send_telegram_notification(event: events.SessionCompleted):
     """
     Sends a telegram notification when a session is completed.
     """
     if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
-        asyncio.run(
-            notifier.send_message(
-                chat_id=settings.TELEGRAM_CHAT_ID,
-                message=str(agent("The user completed the pomodoro session!")),
-            )
+        await notifier.send_message(
+            chat_id=settings.TELEGRAM_CHAT_ID,
+            message=str(agent("The user completed the pomodoro session!")),
         )
 
 
-def send_telegram_notification_on_start(event: events.SessionStarted):
+async def send_telegram_notification_on_start(event: events.SessionStarted):
     """
     Sends a telegram notification when a session starts.
     """
     if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
-        asyncio.run(
-            notifier.send_message(
-                chat_id=settings.TELEGRAM_CHAT_ID,
-                message=str(agent("The user started a pomodoro session!")),
-            )
+        await notifier.send_message(
+            chat_id=settings.TELEGRAM_CHAT_ID,
+            message=str(agent("The user started a pomodoro session!")),
         )
 
 
-def send_telegram_notification_on_expiration(event: events.SessionExpired):
+async def send_telegram_notification_on_expiration(event: events.SessionExpired):
     """
     Sends a telegram notification when a session expires.
     """
     if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
-        asyncio.run(
-            notifier.send_message(
-                chat_id=settings.TELEGRAM_CHAT_ID,
-                message=f"Pomodoro session {event.session_id} has expired!",
-            )
+        await notifier.send_message(
+            chat_id=settings.TELEGRAM_CHAT_ID,
+            message=f"Pomodoro session {event.session_id} has expired!",
         )
+
+
+async def start_command(update: Update, context: CallbackContext) -> None:
+    """
+    Handles the /start command, starting a new pomodoro session.
+    """
+    if update.message and update.message.from_user:
+        user_id = update.message.from_user.id
+        chat_id = update.message.chat_id
+
+        session_manager = SessionManager()
+        # This is a hack to convert telegram's integer user_id to a UUID.
+        # A proper implementation would have a user management system.
+        user_uuid = UUID(int=user_id)
+
+        new_session = session_manager.start_new_session(user_id=user_uuid)
+
+        db_session = next(get_session())
+        orm_session = orm.PomodoroSession(
+            session_id=new_session.session_id,
+            start_time=new_session.start_time,
+            end_time=new_session.end_time,
+            state=new_session.state,
+            duration=new_session.duration,
+            user_id=new_session.user_id,
+            task_id=new_session.task_id,
+            expires_at=new_session.expires_at,
+            pause_start_time=new_session.pause_start_time,
+            total_paused_duration=new_session.total_paused_duration,
+        )
+
+        db_session.add(orm_session)
+        db_session.commit()
+        db_session.refresh(orm_session)
+
+        # We don't publish the SessionStarted event to avoid a duplicate notification
+        # because we are sending a direct message to the user.
+        # for event in new_session.events:
+        #     if not isinstance(event, events.SessionStarted):
+        #         await event_bus.publish(event)
+
+        if (notifier := telegram.get_telegram_notifier()):
+            duration_minutes = new_session.duration.total_seconds() / 60
+            message = f"Pomodoro session started! It will last for {duration_minutes:.0f} minutes."
+            await notifier.send_message(
+                chat_id=str(chat_id),
+                message=message,
+            )
