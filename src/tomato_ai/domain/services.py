@@ -41,7 +41,7 @@ class SessionNotifier:
         """
         active_sessions = self.db_session.query(orm.PomodoroSession).filter_by(state="active").all()
         for orm_session in active_sessions:
-            if orm_session.expires_at and orm_session.expires_at < datetime.now():
+            if orm_session.expires_at and orm_session.expires_at < datetime.utcnow():
                 domain_session = models.PomodoroSession(
                     user_id=orm_session.user_id,
                     session_id=orm_session.session_id,
