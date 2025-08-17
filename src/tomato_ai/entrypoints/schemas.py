@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 class PomodoroSessionCreate(BaseModel):
     user_id: UUID
     task_id: Optional[UUID] = None
+    duration_seconds: Optional[int] = None
 
 
 class PomodoroSessionRead(BaseModel):

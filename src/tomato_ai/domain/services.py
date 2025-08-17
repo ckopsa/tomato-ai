@@ -1,5 +1,5 @@
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -14,14 +14,24 @@ class SessionManager:
     A domain service for managing Pomodoro sessions.
     """
 
-    def start_new_session(self, user_id: UUID, task_id: UUID | None = None) -> PomodoroSession:
+    def start_new_session(
+        self,
+        user_id: UUID,
+        task_id: UUID | None = None,
+        duration_seconds: int | None = None,
+    ) -> PomodoroSession:
         """
         Starts a new Pomodoro session.
         """
+        duration = (
+            timedelta(seconds=duration_seconds)
+            if duration_seconds
+            else WORK.default_duration
+        )
         session = PomodoroSession(
             user_id=user_id,
             task_id=task_id,
-            duration=WORK.default_duration,
+            duration=duration,
         )
         session.start()
         return session
@@ -41,7 +51,7 @@ class SessionNotifier:
         """
         active_sessions = self.db_session.query(orm.PomodoroSession).filter_by(state="active").all()
         for orm_session in active_sessions:
-            if orm_session.expires_at and orm_session.expires_at < datetime.utcnow():
+            if orm_session.expires_at and orm_session.expires_at < datetime.now(timezone.utc):
                 domain_session = models.PomodoroSession(
                     user_id=orm_session.user_id,
                     session_id=orm_session.session_id,
@@ -54,15 +64,12 @@ class SessionNotifier:
                     pause_start_time=orm_session.pause_start_time,
                     total_paused_duration=orm_session.total_paused_duration,
                 )
-                domain_session.complete()
+                domain_session.expire()
                 orm_session.state = domain_session.state
                 orm_session.end_time = domain_session.end_time
 
                 for event in domain_session.events:
                     await event_bus.publish(event)
 
-                await event_bus.publish(
-                    events.SessionExpired(session_id=domain_session.session_id, user_id=domain_session.user_id)
-                )
                 self.db_session.add(orm_session)
         self.db_session.commit()

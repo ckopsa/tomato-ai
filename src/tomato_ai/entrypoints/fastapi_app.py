@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,8 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler
 
 from tomato_ai.adapters.orm import Base
+import logging
+
 from tomato_ai.domain.services import SessionManager, SessionNotifier
 from tomato_ai.entrypoints.schemas import PomodoroSessionCreate, PomodoroSessionRead, PomodoroSessionUpdateState
 from tomato_ai.adapters import orm, telegram, event_bus
@@ -17,14 +19,19 @@ from tomato_ai import handlers
 from tomato_ai.config import settings
 
 
+logger = logging.getLogger(__name__)
+
+
 async def run_scheduler():
+    logger.info("Running scheduler to check for expired sessions")
     db_session = next(get_session())
     notifier = SessionNotifier(db_session)
     await notifier.check_and_notify_expired_sessions()
+    logger.info("Scheduler finished checking for expired sessions")
 
 
 async def lifespan(app: FastAPI):
-    scheduler = BackgroundScheduler()
+    scheduler = AsyncIOScheduler()
     scheduler.add_job(run_scheduler, "interval", seconds=10)
     scheduler.start()
 
@@ -32,11 +39,13 @@ async def lifespan(app: FastAPI):
         ptb_app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
         ptb_app.add_handler(CommandHandler("start", handlers.start_command))
         await ptb_app.initialize()
+        await ptb_app.start()
         app.state.ptb_app = ptb_app
 
     yield
 
     if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN != "dummy-token":
+        await app.state.ptb_app.stop()
         await app.state.ptb_app.shutdown()
     scheduler.shutdown()
 
@@ -59,7 +68,9 @@ def create_app() -> FastAPI:
     ):
         session_manager = SessionManager()
         new_session = session_manager.start_new_session(
-            user_id=session_data.user_id, task_id=session_data.task_id
+            user_id=session_data.user_id,
+            task_id=session_data.task_id,
+            duration_seconds=session_data.duration_seconds,
         )
 
         orm_session = orm.PomodoroSession(

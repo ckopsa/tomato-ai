@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 from uuid import uuid4
 from fastapi.testclient import TestClient
@@ -76,3 +77,22 @@ async def test_telegram_webhook(client: TestClient):
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
         mock_app.process_update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_session_expires_after_duration(scheduler_client: TestClient):
+    user_id = uuid4()
+    # Create a session that lasts for 1 second
+    response = scheduler_client.post("/sessions/", json={"user_id": str(user_id), "duration_seconds": 1})
+    assert response.status_code == 200
+    data = response.json()
+    session_id = data["session_id"]
+
+    # Wait for the scheduler to run (it runs every 10 seconds in the app)
+    await asyncio.sleep(11)
+
+    # Check that the session has expired
+    response = scheduler_client.get(f"/sessions/{session_id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["state"] == "expired"
