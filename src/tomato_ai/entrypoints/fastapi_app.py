@@ -1,19 +1,30 @@
 from uuid import UUID
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from tomato_ai.adapters.database import get_engine, get_session
 from tomato_ai.adapters.orm import Base
-from tomato_ai.domain.services import SessionManager
+from tomato_ai.domain.services import SessionManager, SessionNotifier
 from tomato_ai.entrypoints.schemas import PomodoroSessionCreate, PomodoroSessionRead, PomodoroSessionUpdateState
 from tomato_ai.adapters import orm, telegram, event_bus
 from tomato_ai.domain import models, events
 from tomato_ai.config import settings
 
 
+def run_scheduler():
+    db_session = next(get_session())
+    notifier = SessionNotifier(db_session)
+    notifier.check_and_notify_expired_sessions()
+
+
 def lifespan(app: FastAPI):
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(run_scheduler, "interval", seconds=10)
+    scheduler.start()
     yield
+    scheduler.shutdown()
 
 
 def create_app() -> FastAPI:
@@ -45,6 +56,9 @@ def create_app() -> FastAPI:
             duration=new_session.duration,
             user_id=new_session.user_id,
             task_id=new_session.task_id,
+            expires_at=new_session.expires_at,
+            pause_start_time=new_session.pause_start_time,
+            total_paused_duration=new_session.total_paused_duration,
         )
 
         db_session.add(orm_session)
@@ -80,6 +94,9 @@ def create_app() -> FastAPI:
             state=orm_session.state,
             duration=orm_session.duration,
             task_id=orm_session.task_id,
+            expires_at=orm_session.expires_at,
+            pause_start_time=orm_session.pause_start_time,
+            total_paused_duration=orm_session.total_paused_duration,
         )
 
         original_state = domain_session.state
@@ -95,6 +112,9 @@ def create_app() -> FastAPI:
 
         orm_session.state = domain_session.state
         orm_session.end_time = domain_session.end_time
+        orm_session.expires_at = domain_session.expires_at
+        orm_session.pause_start_time = domain_session.pause_start_time
+        orm_session.total_paused_duration = domain_session.total_paused_duration
 
         db_session.commit()
         db_session.refresh(orm_session)

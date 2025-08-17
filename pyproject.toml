@@ -12,6 +12,7 @@ dependencies = [
     "alembic>=1.13.1",
     "psycopg2-binary>=2.9.9",
     "python-telegram-bot>=21.0.1",
+    "apscheduler>=3.10.4",
 ]
 
 [project.optional-dependencies]
