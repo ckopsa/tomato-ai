@@ -35,7 +35,7 @@ class SessionNotifier:
     def __init__(self, db_session: Session):
         self.db_session = db_session
 
-    def check_and_notify_expired_sessions(self):
+    async def check_and_notify_expired_sessions(self):
         """
         Checks for expired sessions and notifies the user.
         """
@@ -57,7 +57,11 @@ class SessionNotifier:
                 domain_session.complete()
                 orm_session.state = domain_session.state
                 orm_session.end_time = domain_session.end_time
-                event_bus.publish(
+
+                for event in domain_session.events:
+                    await event_bus.publish(event)
+
+                await event_bus.publish(
                     events.SessionExpired(session_id=domain_session.session_id, user_id=domain_session.user_id)
                 )
                 self.db_session.add(orm_session)

@@ -5,24 +5,34 @@ from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from tomato_ai.adapters.database import get_engine, get_session
+from telegram import Update
+from telegram.ext import Application, CommandHandler
+
 from tomato_ai.adapters.orm import Base
 from tomato_ai.domain.services import SessionManager, SessionNotifier
 from tomato_ai.entrypoints.schemas import PomodoroSessionCreate, PomodoroSessionRead, PomodoroSessionUpdateState
 from tomato_ai.adapters import orm, telegram, event_bus
 from tomato_ai.domain import models, events
+from tomato_ai import handlers
 from tomato_ai.config import settings
 
 
-def run_scheduler():
+async def run_scheduler():
     db_session = next(get_session())
     notifier = SessionNotifier(db_session)
-    notifier.check_and_notify_expired_sessions()
+    await notifier.check_and_notify_expired_sessions()
 
 
-def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI):
     scheduler = BackgroundScheduler()
     scheduler.add_job(run_scheduler, "interval", seconds=10)
     scheduler.start()
+
+    if settings.TELEGRAM_BOT_TOKEN:
+        ptb_app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
+        ptb_app.add_handler(CommandHandler("start", handlers.start_command))
+        app.state.ptb_app = ptb_app
+
     yield
     scheduler.shutdown()
 
@@ -39,7 +49,7 @@ def create_app() -> FastAPI:
         return {"status": "healthy"}
 
     @app.post("/sessions/", response_model=PomodoroSessionRead)
-    def create_session(
+    async def create_session(
         session_data: PomodoroSessionCreate,
         db_session: Session = Depends(get_session),
     ):
@@ -64,6 +74,10 @@ def create_app() -> FastAPI:
         db_session.add(orm_session)
         db_session.commit()
         db_session.refresh(orm_session)
+
+        for event in new_session.events:
+            await event_bus.publish(event)
+
         return orm_session
 
     @app.get("/sessions/{session_id}", response_model=PomodoroSessionRead)
@@ -119,8 +133,17 @@ def create_app() -> FastAPI:
         db_session.commit()
         db_session.refresh(orm_session)
 
-        if original_state != "completed" and domain_session.state == "completed":
-            event_bus.publish(events.SessionCompleted(session_id=domain_session.session_id))
+        for event in domain_session.events:
+            await event_bus.publish(event)
         return orm_session
+
+    if settings.TELEGRAM_BOT_TOKEN:
+        @app.post("/telegram/webhook")
+        async def telegram_webhook(request: Request):
+            ptb_app = request.app.state.ptb_app
+            update_data = await request.json()
+            update = Update.de_json(update_data, ptb_app.bot)
+            await ptb_app.process_update(update)
+            return {"status": "ok"}
 
     return app

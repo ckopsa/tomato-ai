@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID, uuid4
 
-from tomato_ai.adapters import event_bus
 from tomato_ai.domain import events
 
 
@@ -32,6 +31,7 @@ class PomodoroSession:
     state: str = "pending"
     duration: timedelta = timedelta(minutes=25)
     task_id: Optional[UUID] = None
+    events: list = field(default_factory=list, init=False)
 
     def start(self):
         """
@@ -42,7 +42,7 @@ class PomodoroSession:
         self.state = "active"
         self.start_time = datetime.now()
         self.expires_at = self.start_time + self.duration
-        event_bus.publish(events.SessionStarted(session_id=self.session_id, user_id=self.user_id))
+        self.events.append(events.SessionStarted(session_id=self.session_id, user_id=self.user_id))
 
     def complete(self):
         """
@@ -52,7 +52,7 @@ class PomodoroSession:
             raise ValueError("Session is not active")
         self.state = "completed"
         self.end_time = datetime.now()
-        event_bus.publish(events.SessionCompleted(session_id=self.session_id))
+        self.events.append(events.SessionCompleted(session_id=self.session_id))
 
     def pause(self):
         """
@@ -62,7 +62,7 @@ class PomodoroSession:
             raise ValueError("Session is not active")
         self.state = "paused"
         self.pause_start_time = datetime.now()
-        event_bus.publish(events.SessionPaused(session_id=self.session_id))
+        self.events.append(events.SessionPaused(session_id=self.session_id))
 
     def resume(self):
         """
@@ -78,7 +78,7 @@ class PomodoroSession:
         if self.expires_at:
             self.expires_at += paused_duration
         self.pause_start_time = None
-        event_bus.publish(events.SessionResumed(session_id=self.session_id))
+        self.events.append(events.SessionResumed(session_id=self.session_id))
 
 
 # Predefined session types
