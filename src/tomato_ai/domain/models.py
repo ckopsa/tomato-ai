@@ -26,6 +26,9 @@ class PomodoroSession:
     session_id: UUID = field(default_factory=uuid4)
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    pause_start_time: Optional[datetime] = None
+    total_paused_duration: timedelta = field(default_factory=timedelta)
     state: str = "pending"
     duration: timedelta = timedelta(minutes=25)
     task_id: Optional[UUID] = None
@@ -38,6 +41,7 @@ class PomodoroSession:
             raise ValueError("Session has already started")
         self.state = "active"
         self.start_time = datetime.now()
+        self.expires_at = self.start_time + self.duration
         event_bus.publish(events.SessionStarted(session_id=self.session_id, user_id=self.user_id))
 
     def complete(self):
@@ -57,6 +61,7 @@ class PomodoroSession:
         if self.state != "active":
             raise ValueError("Session is not active")
         self.state = "paused"
+        self.pause_start_time = datetime.now()
         event_bus.publish(events.SessionPaused(session_id=self.session_id))
 
     def resume(self):
@@ -65,7 +70,14 @@ class PomodoroSession:
         """
         if self.state != "paused":
             raise ValueError("Session is not paused")
+        if self.pause_start_time is None:
+            raise ValueError("Session is not paused or pause_start_time is not set")
         self.state = "active"
+        paused_duration = datetime.now() - self.pause_start_time
+        self.total_paused_duration += paused_duration
+        if self.expires_at:
+            self.expires_at += paused_duration
+        self.pause_start_time = None
         event_bus.publish(events.SessionResumed(session_id=self.session_id))
 
 

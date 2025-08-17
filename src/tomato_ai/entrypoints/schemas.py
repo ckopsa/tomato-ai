@@ -14,6 +14,9 @@ class PomodoroSessionRead(BaseModel):
     session_id: UUID
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    pause_start_time: Optional[datetime] = None
+    total_paused_duration: timedelta
     state: str
     duration: timedelta
     user_id: UUID

@@ -40,3 +40,12 @@ class SessionResumed(Event):
     Event raised when a session is resumed.
     """
     session_id: UUID
+
+
+@dataclass(frozen=True)
+class SessionExpired(Event):
+    """
+    Event raised when a session expires.
+    """
+    session_id: UUID
+    user_id: UUID

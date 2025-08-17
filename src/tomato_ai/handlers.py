@@ -41,3 +41,17 @@ def send_telegram_notification_on_start(event: events.SessionStarted):
                 message=f"Pomodoro session {event.session_id} started!",
             )
         )
+
+
+def send_telegram_notification_on_expiration(event: events.SessionExpired):
+    """
+    Sends a telegram notification when a session expires.
+    """
+    if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
+        loop = asyncio.get_running_loop()
+        loop.create_task(
+            notifier.send_message(
+                chat_id=settings.TELEGRAM_CHAT_ID,
+                message=f"Pomodoro session {event.session_id} has expired!",
+            )
+        )
