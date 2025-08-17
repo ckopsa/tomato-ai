@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str | None = None
     TELEGRAM_CHAT_ID: str | None = None
 
+    OLLAMA_API_KEY: str | None = None
+
     @property
     def database_url(self) -> PostgresDsn:
         if self.TEST_DATABASE_URL:
