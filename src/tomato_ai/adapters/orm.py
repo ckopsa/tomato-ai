@@ -10,6 +10,7 @@ class PomodoroSession(Base):
     __tablename__ = "pomodoro_sessions"
 
     session_id = Column(Uuid, primary_key=True)
+    session_type = Column(String, nullable=False, server_default="work")
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)

@@ -68,7 +68,7 @@ async def send_telegram_notification_on_expiration(event: events.SessionExpired)
         )
 
 
-async def start_command(update: Update, context: CallbackContext) -> None:
+async def start_session_command(update: Update, context: CallbackContext, session_type: str) -> None:
     """
     Handles the /start command, starting a new pomodoro session.
     """
@@ -81,7 +81,7 @@ async def start_command(update: Update, context: CallbackContext) -> None:
         # A proper implementation would have a user management system.
         user_uuid = UUID(int=user_id)
 
-        new_session = session_manager.start_new_session(user_id=user_uuid)
+        new_session = session_manager.start_new_session(user_id=user_uuid, session_type=session_type)
 
         db_session = next(get_session())
         orm_session = orm.PomodoroSession(
@@ -95,6 +95,7 @@ async def start_command(update: Update, context: CallbackContext) -> None:
             expires_at=new_session.expires_at,
             pause_start_time=new_session.pause_start_time,
             total_paused_duration=new_session.total_paused_duration,
+            session_type=new_session.session_type,
         )
 
         db_session.add(orm_session)
@@ -109,8 +110,29 @@ async def start_command(update: Update, context: CallbackContext) -> None:
 
         if (notifier := telegram.get_telegram_notifier()):
             duration_minutes = new_session.duration.total_seconds() / 60
-            message = f"Pomodoro session started! It will last for {duration_minutes:.0f} minutes."
+            message = f"{new_session.session_type.replace('_', ' ').title()} session started! It will last for {duration_minutes:.0f} minutes."
             await notifier.send_message(
                 chat_id=str(chat_id),
                 message=message,
             )
+
+
+async def start_command(update: Update, context: CallbackContext) -> None:
+    """
+    Handles the /start command, starting a new pomodoro session.
+    """
+    await start_session_command(update, context, "work")
+
+
+async def start_short_break_command(update: Update, context: CallbackContext) -> None:
+    """
+    Handles the /short_break command, starting a new short break session.
+    """
+    await start_session_command(update, context, "short_break")
+
+
+async def start_long_break_command(update: Update, context: CallbackContext) -> None:
+    """
+    Handles the /long_break command, starting a new long break session.
+    """
+    await start_session_command(update, context, "long_break")

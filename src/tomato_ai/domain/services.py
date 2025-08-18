@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from tomato_ai.adapters import event_bus, orm
 from tomato_ai.domain import events, models
-from tomato_ai.domain.models import PomodoroSession, WORK
+from tomato_ai.domain.models import PomodoroSession, WORK, SHORT_BREAK, LONG_BREAK
 
 
 class SessionManager:
@@ -14,14 +14,24 @@ class SessionManager:
     A domain service for managing Pomodoro sessions.
     """
 
-    def start_new_session(self, user_id: UUID, task_id: UUID | None = None) -> PomodoroSession:
+    def start_new_session(
+        self, user_id: UUID, task_id: UUID | None = None, session_type: str = "work"
+    ) -> PomodoroSession:
         """
         Starts a new Pomodoro session.
         """
+        session_types = {
+            "work": WORK,
+            "short_break": SHORT_BREAK,
+            "long_break": LONG_BREAK,
+        }
+        selected_session_type = session_types.get(session_type, WORK)
+
         session = PomodoroSession(
             user_id=user_id,
             task_id=task_id,
-            duration=WORK.default_duration,
+            session_type=selected_session_type.type,
+            duration=selected_session_type.default_duration,
         )
         session.start()
         return session

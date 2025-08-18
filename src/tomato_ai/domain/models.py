@@ -23,6 +23,7 @@ class PomodoroSession:
     """
     user_id: UUID
     session_id: UUID = field(default_factory=uuid4)
+    session_type: str = "work"
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     expires_at: Optional[datetime] = None
