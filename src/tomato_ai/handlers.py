@@ -44,7 +44,7 @@ async def send_telegram_notification(event: events.SessionCompleted):
     """
     if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
         await notifier.send_message(
-            chat_id=settings.TELEGRAM_CHAT_ID,
+            chat_id=str(int(event.user_id)),
             message=str(get_agent(str(event.user_id))(
                 f"The user completed the pomodoro session of type {event.session_type}!")),
         )
@@ -68,7 +68,7 @@ async def send_telegram_notification_on_expiration(event: events.SessionExpired)
     """
     if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
         await notifier.send_message(
-            chat_id=settings.TELEGRAM_CHAT_ID,
+            chat_id=str(int(event.user_id)),
             message=f"Pomodoro session {event.session_id} has expired!",
         )
 
