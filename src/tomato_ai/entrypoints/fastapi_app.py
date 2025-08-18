@@ -32,7 +32,6 @@ async def lifespan(app: FastAPI):
         ptb_app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
         ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message))
         ptb_app.add_handler(CommandHandler("start", handlers.start_command))
-        ptb_app.add_handler(CommandHandler("start", handlers.start_command))
         ptb_app.add_handler(CommandHandler("break", handlers.start_short_break_command))
         ptb_app.add_handler(CommandHandler("short_break", handlers.start_short_break_command))
         ptb_app.add_handler(CommandHandler("long_break", handlers.start_long_break_command))

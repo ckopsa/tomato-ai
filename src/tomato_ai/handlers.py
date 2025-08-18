@@ -3,6 +3,7 @@ from uuid import UUID
 
 from strands import Agent
 from strands.session.file_session_manager import FileSessionManager
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram import Update
 from telegram.ext import CallbackContext
 from tomato_ai.adapters import telegram, orm
@@ -55,7 +56,8 @@ async def send_telegram_notification_on_start(event: events.SessionStarted):
     if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
         await notifier.send_message(
             chat_id=str(int(event.user_id)),
-            message=str(get_agent(str(event.user_id))(f"The user started a pomodoro session of type {event.session_type}!")),
+            message=str(
+                get_agent(str(event.user_id))(f"The user started a pomodoro session of type {event.session_type}!")),
         )
 
 
@@ -112,10 +114,26 @@ async def start_session_command(update: Update, context: CallbackContext, sessio
 
         if (notifier := telegram.get_telegram_notifier()):
             duration_minutes = new_session.duration.total_seconds() / 60
-            message = f"{new_session.session_type.replace('_', ' ').title()} session started! It will last for {duration_minutes:.0f} minutes."
+            start_ts = int(new_session.start_time.timestamp())
+            end_ts = int((datetime.utcnow() + new_session.duration).timestamp())  # end time in seconds
+
+            message = (
+                f"{new_session.session_type.replace('_', ' ').title()} session started! "
+                f"It will last for {duration_minutes:.0f} minutes."
+            )
+
+            # Inline keyboard with WebApp button
+            keyboard = [
+                [InlineKeyboardButton(
+                    text="⏳ Open Timer",
+                    web_app=WebAppInfo(url=f"https://tomato.kopsa.info/telegram-mini-app?start={start_ts}end={end_ts}")
+                )]
+            ]
+
             await notifier.send_message(
                 chat_id=str(chat_id),
                 message=message,
+                reply_markup=InlineKeyboardMarkup(keyboard),
             )
 
 

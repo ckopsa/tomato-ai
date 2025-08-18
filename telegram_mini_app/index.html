@@ -48,20 +48,29 @@
     document.body.style.setProperty("--hint-color", theme.hint_color || "#cccccc");
     document.body.style.setProperty("--accent-color", theme.button_color || "tomato");
 
-    // Parse end time from URL
+    // Parse start and end times from URL (in seconds since epoch)
     const urlParams = new URLSearchParams(window.location.search);
+    const startParam = urlParams.get("start");
+    const start = startParam ? parseInt(startParam, 10) * 1000 : Date.now();
     const end = parseInt(urlParams.get("end"), 10) * 1000;
-    const total = end - Date.now();
+    const total = Math.max(0, end - start); // Ensure total is non-negative
 
     function update() {
         const now = Date.now();
-        const remaining = Math.max(0, end - now);
+        let remaining;
+        if (now < start) {
+            remaining = total;
+        } else if (now > end) {
+            remaining = 0;
+        } else {
+            remaining = end - now;
+        }
 
-        const mins = String(Math.floor(remaining/60000)).padStart(2, "0");
-        const secs = String(Math.floor((remaining%60000)/1000)).padStart(2, "0");
+        const mins = String(Math.floor(remaining / 60000)).padStart(2, "0");
+        const secs = String(Math.floor((remaining % 60000) / 1000)).padStart(2, "0");
         document.getElementById("time").textContent = `${mins}:${secs}`;
 
-        document.getElementById("fill").style.width = `${(remaining/total)*100}%`;
+        document.getElementById("fill").style.width = `${(total > 0 ? (remaining / total) * 100 : 0)}%`;
 
         if (remaining <= 0) {
             clearInterval(timer);
