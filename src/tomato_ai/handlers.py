@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from uuid import UUID
 
 from strands import Agent
@@ -115,7 +116,7 @@ async def start_session_command(update: Update, context: CallbackContext, sessio
         if (notifier := telegram.get_telegram_notifier()):
             duration_minutes = new_session.duration.total_seconds() / 60
             start_ts = int(new_session.start_time.timestamp())
-            end_ts = int((datetime.utcnow() + new_session.duration).timestamp())  # end time in seconds
+            end_ts = int((datetime.now(timezone.utc) + new_session.duration).timestamp())  # end time in seconds
 
             message = (
                 f"{new_session.session_type.replace('_', ' ').title()} session started! "
@@ -126,7 +127,7 @@ async def start_session_command(update: Update, context: CallbackContext, sessio
             keyboard = [
                 [InlineKeyboardButton(
                     text="⏳ Open Timer",
-                    web_app=WebAppInfo(url=f"https://tomato.kopsa.info/telegram-mini-app?start={start_ts}end={end_ts}")
+                    web_app=WebAppInfo(url=f"https://tomato.kopsa.info/telegram-mini-app?start={start_ts}&end={end_ts}")
                 )]
             ]
 
