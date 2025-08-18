@@ -4,8 +4,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from telegram import Update
-from telegram.ext import Application, CommandHandler
-
+from telegram.ext import Application, CommandHandler, MessageHandler
+from telegram.ext import filters
 from tomato_ai import handlers
 from tomato_ai.adapters import orm, event_bus
 from tomato_ai.adapters.database import get_session
@@ -28,6 +28,8 @@ async def lifespan(app: FastAPI):
 
     if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN != "dummy-token":
         ptb_app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
+        ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.start_command))
+        ptb_app.add_handler(CommandHandler("start", handlers.start_command))
         ptb_app.add_handler(CommandHandler("start", handlers.start_command))
         ptb_app.add_handler(CommandHandler("break", handlers.start_short_break_command))
         ptb_app.add_handler(CommandHandler("short_break", handlers.start_short_break_command))
@@ -55,8 +57,8 @@ def create_app() -> FastAPI:
 
     @app.post("/sessions/", response_model=PomodoroSessionRead)
     async def create_session(
-        session_data: PomodoroSessionCreate,
-        db_session: Session = Depends(get_session),
+            session_data: PomodoroSessionCreate,
+            db_session: Session = Depends(get_session),
     ):
         session_manager = SessionManager()
         new_session = session_manager.start_new_session(
@@ -90,8 +92,8 @@ def create_app() -> FastAPI:
 
     @app.get("/sessions/{session_id}", response_model=PomodoroSessionRead)
     def get_session_by_id(
-        session_id: UUID,
-        db_session: Session = Depends(get_session),
+            session_id: UUID,
+            db_session: Session = Depends(get_session),
     ):
         session = db_session.get(orm.PomodoroSession, session_id)
         if session is None:
@@ -100,9 +102,9 @@ def create_app() -> FastAPI:
 
     @app.put("/sessions/{session_id}/state", response_model=PomodoroSessionRead)
     async def update_session_state(
-        session_id: UUID,
-        state_data: PomodoroSessionUpdateState,
-        db_session: Session = Depends(get_session),
+            session_id: UUID,
+            state_data: PomodoroSessionUpdateState,
+            db_session: Session = Depends(get_session),
     ):
         orm_session = db_session.get(orm.PomodoroSession, session_id)
         if orm_session is None:

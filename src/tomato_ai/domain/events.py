@@ -16,6 +16,7 @@ class SessionStarted(Event):
     """
     session_id: UUID
     user_id: UUID
+    session_type: str
 
 
 @dataclass(frozen=True)

@@ -55,7 +55,7 @@ async def send_telegram_notification_on_start(event: events.SessionStarted):
     if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
         await notifier.send_message(
             chat_id=str(int(event.user_id)),
-            message=str(get_agent(str(event.user_id))(f"The user started a pomodoro session!")),
+            message=str(get_agent(str(event.user_id))(f"The user started a pomodoro session of type {event.session_type}!")),
         )
 
 
@@ -138,3 +138,14 @@ async def start_long_break_command(update: Update, context: CallbackContext) -> 
     Handles the /long_break command, starting a new long break session.
     """
     await start_session_command(update, context, "long_break")
+
+
+async def handle_message(update: Update, context: CallbackContext) -> None:
+    """
+    Handles incoming messages and responds with a simple echo.
+    """
+    if update.message and update.message.text:
+        user_message = update.message.text
+        agent_response = get_agent(str(update.effective_chat.id))(user_message)
+        response = str(agent_response)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
