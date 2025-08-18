@@ -53,9 +53,8 @@ async def send_telegram_notification_on_start(event: events.SessionStarted):
     Sends a telegram notification when a session starts.
     """
     if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
-        print(int(event.user_id))
         await notifier.send_message(
-            chat_id=settings.TELEGRAM_CHAT_ID,
+            chat_id=str(int(event.user_id)),
             message=str(get_agent(str(event.user_id))(f"The user started a pomodoro session!")),
         )
 
