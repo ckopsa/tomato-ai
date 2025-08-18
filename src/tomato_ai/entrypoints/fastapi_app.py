@@ -29,6 +29,9 @@ async def lifespan(app: FastAPI):
     if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN != "dummy-token":
         ptb_app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
         ptb_app.add_handler(CommandHandler("start", handlers.start_command))
+        ptb_app.add_handler(CommandHandler("break", handlers.start_short_break_command))
+        ptb_app.add_handler(CommandHandler("short_break", handlers.start_short_break_command))
+        ptb_app.add_handler(CommandHandler("long_break", handlers.start_long_break_command))
         await ptb_app.initialize()
         app.state.ptb_app = ptb_app
 
@@ -57,7 +60,9 @@ def create_app() -> FastAPI:
     ):
         session_manager = SessionManager()
         new_session = session_manager.start_new_session(
-            user_id=session_data.user_id, task_id=session_data.task_id
+            user_id=session_data.user_id,
+            task_id=session_data.task_id,
+            session_type=session_data.session_type,
         )
 
         orm_session = orm.PomodoroSession(
@@ -71,6 +76,7 @@ def create_app() -> FastAPI:
             expires_at=new_session.expires_at,
             pause_start_time=new_session.pause_start_time,
             total_paused_duration=new_session.total_paused_duration,
+            session_type=new_session.session_type,
         )
 
         db_session.add(orm_session)

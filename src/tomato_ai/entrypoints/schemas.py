@@ -8,10 +8,14 @@ from pydantic import BaseModel, Field
 class PomodoroSessionCreate(BaseModel):
     user_id: UUID
     task_id: Optional[UUID] = None
+    session_type: str = "work"
 
+
+from pydantic import computed_field
 
 class PomodoroSessionRead(BaseModel):
     session_id: UUID
+    session_type: str
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     expires_at: Optional[datetime] = None
@@ -21,6 +25,16 @@ class PomodoroSessionRead(BaseModel):
     duration: timedelta
     user_id: UUID
     task_id: Optional[UUID] = None
+
+    @computed_field
+    @property
+    def duration_seconds(self) -> int:
+        return int(self.duration.total_seconds())
+
+    @computed_field
+    @property
+    def total_paused_duration_seconds(self) -> int:
+        return int(self.total_paused_duration.total_seconds())
 
     class Config:
         from_attributes = True

@@ -19,6 +19,8 @@ async def test_create_and_get_session(client: TestClient):
     data = response.json()
     assert data["user_id"] == str(user_id)
     assert data["state"] == "active"
+    assert data["session_type"] == "work"
+    assert data["duration_seconds"] == 1500  # 25 minutes in seconds
 
     session_id = data["session_id"]
     response = client.get(f"/sessions/{session_id}")
@@ -26,6 +28,26 @@ async def test_create_and_get_session(client: TestClient):
     data = response.json()
     assert data["session_id"] == session_id
     assert data["user_id"] == str(user_id)
+
+
+@pytest.mark.parametrize(
+    "session_type, expected_duration",
+    [
+        ("work", 25 * 60),
+        ("short_break", 5 * 60),
+        ("long_break", 15 * 60),
+    ],
+)
+@pytest.mark.asyncio
+async def test_create_session_with_type(client: TestClient, session_type: str, expected_duration: int):
+    user_id = uuid4()
+    response = client.post("/sessions/", json={"user_id": str(user_id), "session_type": session_type})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_id"] == str(user_id)
+    assert data["state"] == "active"
+    assert data["session_type"] == session_type
+    assert data["duration_seconds"] == expected_duration
 
 
 @pytest.mark.asyncio
