@@ -2,6 +2,8 @@ from uuid import UUID
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler
@@ -46,6 +48,11 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan)
+    app.mount("/static", StaticFiles(directory="telegram_mini_app"), name="telegram_mini_app")
+
+    @app.get("/telegram-mini-app")
+    async def get_pomodoro():
+        return FileResponse("telegram_mini_app/index.html")
 
     @app.get("/")
     def root():

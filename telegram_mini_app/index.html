@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Pomodoro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            text-align: center;
+            padding: 40px 20px;
+            background: var(--bg-color);
+            color: var(--text-color);
+        }
+        #time {
+            font-size: 3em;
+            margin: 40px 0 20px;
+            font-weight: bold;
+        }
+        .bar {
+            height: 14px;
+            background: var(--hint-color);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0 30px;
+        }
+        .fill {
+            height: 100%;
+            width: 100%;
+            background: var(--accent-color);
+            transition: width 1s linear;
+        }
+    </style>
+</head>
+<body>
+<div id="time">--:--</div>
+<div class="bar"><div class="fill" id="fill"></div></div>
+
+<script>
+    const tg = Telegram.WebApp;
+    tg.expand(); // full height
+
+    // Apply Telegram theme colors
+    const theme = tg.themeParams;
+    document.body.style.setProperty("--bg-color", theme.bg_color || "#ffffff");
+    document.body.style.setProperty("--text-color", theme.text_color || "#000000");
+    document.body.style.setProperty("--hint-color", theme.hint_color || "#cccccc");
+    document.body.style.setProperty("--accent-color", theme.button_color || "tomato");
+
+    // Parse end time from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const end = parseInt(urlParams.get("end"), 10) * 1000;
+    const total = end - Date.now();
+
+    function update() {
+        const now = Date.now();
+        const remaining = Math.max(0, end - now);
+
+        const mins = String(Math.floor(remaining/60000)).padStart(2, "0");
+        const secs = String(Math.floor((remaining%60000)/1000)).padStart(2, "0");
+        document.getElementById("time").textContent = `${mins}:${secs}`;
+
+        document.getElementById("fill").style.width = `${(remaining/total)*100}%`;
+
+        if (remaining <= 0) {
+            clearInterval(timer);
+            document.getElementById("time").textContent = "00:00";
+            tg.MainButton.setText("✅ Finished");
+            tg.MainButton.show();
+        }
+    }
+
+    // ✅ Native Main Button ("Done")
+    tg.MainButton.setText("✅ Done");
+    tg.MainButton.onClick(() => tg.sendData("done"));
+    tg.MainButton.show();
+
+    // ⬅️ Native Back Button
+    tg.BackButton.onClick(() => tg.close());
+    tg.BackButton.show();
+
+    const timer = setInterval(update, 1000);
+    update();
+</script>
+</body>
+</html>

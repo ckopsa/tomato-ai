@@ -4,5 +4,6 @@ WORKDIR /code
 COPY ./pyproject.toml /code/pyproject.toml
 COPY ./uv.lock /code/uv.lock
 COPY src /code/src
+COPY telegram_mini_app /code/telegram_mini_app
 RUN uv sync
 CMD ["uv", "run", "fastapi", "run", "src/tomato_ai/main.py", "--proxy-headers", "--port", "80"]
