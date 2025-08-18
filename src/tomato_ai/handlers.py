@@ -1,31 +1,32 @@
-import asyncio
 import logging
 from uuid import UUID
 
 from strands import Agent
+from strands.session.file_session_manager import FileSessionManager
 from telegram import Update
 from telegram.ext import CallbackContext
-
-from tomato_ai.adapters import telegram, orm, event_bus
+from tomato_ai.adapters import telegram, orm
+from tomato_ai.adapters.database import get_session
+from tomato_ai.agents import turbo_20_ollama_model
 from tomato_ai.config import settings
 from tomato_ai.domain import events
-from tomato_ai.agents import turbo_20_ollama_model
 from tomato_ai.domain.services import SessionManager
-from tomato_ai.adapters.database import get_session
+
+logger = logging.getLogger(__name__)
 
 
-agent = Agent(
-    model=turbo_20_ollama_model,
-    system_prompt="""
+def get_agent(session_id: str):
+    return Agent(
+        model=turbo_20_ollama_model,
+        session_manager=FileSessionManager(session_id),
+        system_prompt="""
     You are a small cog in a large pomodoro timer machine.
     
     You are responsible for notifying the user about the events of the pomodor session.
     
     Your reponses should be only the message you want to send to the user.
     """
-)
-
-logger = logging.getLogger(__name__)
+    )
 
 
 def log_event(event: events.Event):
@@ -42,7 +43,8 @@ async def send_telegram_notification(event: events.SessionCompleted):
     if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
         await notifier.send_message(
             chat_id=settings.TELEGRAM_CHAT_ID,
-            message=str(agent("The user completed the pomodoro session!")),
+            message=str(get_agent(str(event.user_id))(
+                f"The user completed the pomodoro session of type {event.session_type}!")),
         )
 
 
@@ -51,9 +53,10 @@ async def send_telegram_notification_on_start(event: events.SessionStarted):
     Sends a telegram notification when a session starts.
     """
     if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
+        print(int(event.user_id))
         await notifier.send_message(
             chat_id=settings.TELEGRAM_CHAT_ID,
-            message=str(agent("The user started a pomodoro session!")),
+            message=str(get_agent(str(event.user_id))(f"The user started a pomodoro session!")),
         )
 
 

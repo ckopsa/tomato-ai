@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
@@ -53,7 +52,11 @@ class PomodoroSession:
             raise ValueError("Session is not active")
         self.state = "completed"
         self.end_time = datetime.utcnow()
-        self.events.append(events.SessionCompleted(session_id=self.session_id))
+        self.events.append(events.SessionCompleted(
+            user_id=self.user_id,
+            session_id=self.session_id,
+            session_type=self.session_type,
+        ))
 
     def pause(self):
         """
