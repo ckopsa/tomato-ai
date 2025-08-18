@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
 
     if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN != "dummy-token":
         ptb_app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
-        ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.start_command))
+        ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message))
         ptb_app.add_handler(CommandHandler("start", handlers.start_command))
         ptb_app.add_handler(CommandHandler("start", handlers.start_command))
         ptb_app.add_handler(CommandHandler("break", handlers.start_short_break_command))
