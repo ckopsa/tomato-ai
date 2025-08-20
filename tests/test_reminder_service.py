@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from uuid import uuid4
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -18,9 +18,10 @@ class TestReminderService:
         service = ReminderService(db_session=mock_db_session)
         user_id = uuid4()
         chat_id = 12345
+        send_at = datetime.now(timezone.utc) + timedelta(minutes=5)
 
         # Act
-        service.schedule_reminder(user_id, chat_id)
+        service.schedule_reminder(user_id, chat_id, send_at)
 
         # Assert
         mock_db_session.add.assert_called_once()
@@ -28,6 +29,7 @@ class TestReminderService:
         assert isinstance(added_reminder, orm.Reminder)
         assert added_reminder.user_id == user_id
         assert added_reminder.chat_id == chat_id
+        assert added_reminder.send_at == send_at
         mock_db_session.commit.assert_called_once()
 
     def test_cancel_reminder(self, mock_db_session):
@@ -57,9 +59,9 @@ class TestReminderNotifier:
             user_id=user_id,
             chat_id=12345,
             state='pending',
-            created_at=datetime.utcnow() - timedelta(minutes=5)
+            send_at=datetime.now(timezone.utc) - timedelta(minutes=5)
         )
-        mock_db_session.query.return_value.filter_by.return_value.all.return_value = [reminder]
+        mock_db_session.query.return_value.filter.return_value.all.return_value = [reminder]
         mock_db_session.query.return_value.filter_by.return_value.first.return_value = None  # No active session
 
         mock_telegram_notifier = AsyncMock()
@@ -86,9 +88,9 @@ class TestReminderNotifier:
             user_id=user_id,
             chat_id=12345,
             state='pending',
-            created_at=datetime.utcnow() - timedelta(minutes=5)
+            send_at=datetime.now(timezone.utc) - timedelta(minutes=5)
         )
-        mock_db_session.query.return_value.filter_by.return_value.all.return_value = [reminder]
+        mock_db_session.query.return_value.filter.return_value.all.return_value = [reminder]
         mock_db_session.query.return_value.filter_by.return_value.first.return_value = orm.PomodoroSession() # Active session
 
         mock_telegram_notifier = AsyncMock()

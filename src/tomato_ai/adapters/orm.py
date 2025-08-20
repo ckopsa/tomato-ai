@@ -29,6 +29,7 @@ class Reminder(Base):
     user_id = Column(Uuid, nullable=False)
     chat_id = Column(Integer, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    send_at = Column(DateTime, nullable=True)
     triggered_at = Column(DateTime, nullable=True)
     state = Column(String, nullable=False, default="pending")
 

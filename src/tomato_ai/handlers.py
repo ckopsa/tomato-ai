@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from uuid import UUID
 
 from strands import Agent
@@ -81,7 +81,8 @@ def schedule_reminder_on_session_completed(event: events.SessionCompleted):
     session = db_session.query(orm.PomodoroSession).filter_by(session_id=event.session_id).first()
     if session:
         reminder_service = ReminderService(db_session)
-        reminder_service.schedule_reminder(event.user_id, session.chat_id)
+        send_at = datetime.now(timezone.utc) + timedelta(minutes=3)
+        reminder_service.schedule_reminder(event.user_id, session.chat_id, send_at)
 
 
 def cancel_reminder_on_session_started(event: events.SessionStarted):

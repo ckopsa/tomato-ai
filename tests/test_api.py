@@ -1,7 +1,7 @@
 import pytest
 from uuid import uuid4
 from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock, MagicMock, ANY
 from tomato_ai.domain import events
 from tomato_ai.adapters import event_bus, orm
 from tomato_ai import handlers
@@ -125,7 +125,7 @@ def test_schedule_reminder_handler(mock_get_session, mock_reminder_service):
     handlers.schedule_reminder_on_session_completed(event)
 
     # Assert
-    mock_service_instance.schedule_reminder.assert_called_once_with(user_id, chat_id)
+    mock_service_instance.schedule_reminder.assert_called_once_with(user_id, chat_id, ANY)
 
 
 @patch('tomato_ai.handlers.ReminderService')
