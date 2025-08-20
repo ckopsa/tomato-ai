@@ -1,7 +1,6 @@
-
 from sqlalchemy import Column, DateTime, Interval, String, Uuid, Integer
 from sqlalchemy.orm import declarative_base
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 Base = declarative_base()
 
@@ -12,10 +11,10 @@ class PomodoroSession(Base):
     session_id = Column(Uuid, primary_key=True)
     chat_id = Column(Integer, nullable=False)
     session_type = Column(String, nullable=False, server_default="work")
-    start_time = Column(DateTime, nullable=True)
-    end_time = Column(DateTime, nullable=True)
-    expires_at = Column(DateTime, nullable=True)
-    pause_start_time = Column(DateTime, nullable=True)
+    start_time = Column(DateTime(timezone=True), nullable=True)
+    end_time = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    pause_start_time = Column(DateTime(timezone=True), nullable=True)
     total_paused_duration = Column(Interval, nullable=False, default=timedelta(0))
     state = Column(String, nullable=False)
     duration = Column(Interval, nullable=False)
@@ -28,9 +27,9 @@ class Reminder(Base):
     id = Column(Uuid, primary_key=True)
     user_id = Column(Uuid, nullable=False)
     chat_id = Column(Integer, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    send_at = Column(DateTime, nullable=True)
-    triggered_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    send_at = Column(DateTime(timezone=True), nullable=True)
+    triggered_at = Column(DateTime(timezone=True), nullable=True)
     state = Column(String, nullable=False, default="pending")
 
 
