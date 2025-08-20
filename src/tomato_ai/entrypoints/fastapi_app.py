@@ -75,6 +75,7 @@ def create_app() -> FastAPI:
 
         orm_session = orm.PomodoroSession(
             session_id=new_session.session_id,
+            chat_id=session_data.chat_id,
             start_time=new_session.start_time,
             end_time=new_session.end_time,
             state=new_session.state,

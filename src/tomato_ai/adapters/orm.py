@@ -1,5 +1,5 @@
 
-from sqlalchemy import Column, DateTime, Interval, String, Uuid
+from sqlalchemy import Column, DateTime, Interval, String, Uuid, Integer
 from sqlalchemy.orm import declarative_base
 from datetime import datetime, timedelta
 
@@ -10,6 +10,7 @@ class PomodoroSession(Base):
     __tablename__ = "pomodoro_sessions"
 
     session_id = Column(Uuid, primary_key=True)
+    chat_id = Column(Integer, nullable=False)
     session_type = Column(String, nullable=False, server_default="work")
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
@@ -26,6 +27,7 @@ class Reminder(Base):
 
     id = Column(Uuid, primary_key=True)
     user_id = Column(Uuid, nullable=False)
+    chat_id = Column(Integer, nullable=False)
     job_id = Column(String, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     triggered_at = Column(DateTime, nullable=True)

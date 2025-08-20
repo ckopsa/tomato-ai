@@ -89,18 +89,20 @@ class ReminderService:
         self.db_session = db_session
         self.scheduler = scheduler
 
-    async def schedule_reminder(self, user_id: UUID):
+    async def schedule_reminder(self, user_id: UUID, chat_id: int):
         """
         Schedules a reminder for the user.
         """
         run_date = datetime.now() + timedelta(minutes=3)
         reminder_id = uuid4()
-        job = self.scheduler.add_job(self.check_in, "date", run_date=run_date, args=[user_id, reminder_id])
+        job = self.scheduler.add_job(self.check_in, "date", run_date=run_date, args=[str(user_id), reminder_id])
         reminder = orm.Reminder(
             id=reminder_id,
             user_id=user_id,
+            chat_id=chat_id,
             job_id=job.id,
-            created_at=datetime.utcnow()
+            created_at=datetime.utcnow(),
+            state="pending",
         )
         self.db_session.add(reminder)
         self.db_session.commit()
@@ -119,18 +121,20 @@ class ReminderService:
             self.db_session.add(reminder)
         self.db_session.commit()
 
-    async def check_in(self, user_id: UUID, reminder_id: UUID):
+    async def check_in(self, user_id: str, reminder_id: UUID):
         """
         Checks if the user has an active session and sends a reminder if not.
         """
-        active_session = self.db_session.query(orm.PomodoroSession).filter_by(user_id=user_id, state="active").first()
-        if not active_session:
+        user_uuid = UUID(user_id)
+        active_session = self.db_session.query(orm.PomodoroSession).filter_by(user_id=user_uuid, state="active").first()
+        reminder = self.db_session.query(orm.Reminder).filter_by(id=reminder_id).first()
+        if not active_session and reminder:
             if (notifier := telegram.get_telegram_notifier()):
                 await notifier.send_message(
-                    chat_id=str(int(user_id)),
+                    chat_id=reminder.chat_id,
                     message="You don't have an active pomodoro session. Would you like to start one?"
                 )
-        reminder = self.db_session.query(orm.Reminder).filter_by(id=reminder_id).first()
+
         if reminder:
             reminder.state = "triggered"
             reminder.triggered_at = datetime.utcnow()
