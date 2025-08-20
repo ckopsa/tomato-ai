@@ -79,8 +79,10 @@ async def schedule_reminder_on_session_completed(event: events.SessionCompleted)
     Schedules a reminder when a session is completed.
     """
     db_session = next(get_session())
-    reminder_service = ReminderService(db_session, scheduler)
-    await reminder_service.schedule_reminder(event.user_id)
+    session = db_session.query(orm.PomodoroSession).filter_by(session_id=event.session_id).first()
+    if session:
+        reminder_service = ReminderService(db_session, scheduler)
+        await reminder_service.schedule_reminder(event.user_id, session.chat_id)
 
 
 async def cancel_reminder_on_session_started(event: events.SessionStarted):
@@ -110,6 +112,7 @@ async def start_session_command(update: Update, context: CallbackContext, sessio
         db_session = next(get_session())
         orm_session = orm.PomodoroSession(
             session_id=new_session.session_id,
+            chat_id=chat_id,
             start_time=new_session.start_time,
             end_time=new_session.end_time,
             state=new_session.state,

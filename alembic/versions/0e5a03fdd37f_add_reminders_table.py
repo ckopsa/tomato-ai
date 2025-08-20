@@ -23,6 +23,7 @@ def upgrade() -> None:
     op.create_table('reminders',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('user_id', sa.Uuid(), nullable=False),
+    sa.Column('chat_id', sa.Integer(), nullable=False),
     sa.Column('job_id', sa.String(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('triggered_at', sa.DateTime(), nullable=True),

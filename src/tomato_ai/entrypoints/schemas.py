@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class PomodoroSessionCreate(BaseModel):
     user_id: UUID
+    chat_id: int
     task_id: Optional[UUID] = None
     session_type: str = "work"
 
@@ -15,6 +16,7 @@ from pydantic import computed_field
 
 class PomodoroSessionRead(BaseModel):
     session_id: UUID
+    chat_id: int
     session_type: str
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None

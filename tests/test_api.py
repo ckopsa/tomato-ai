@@ -1,8 +1,10 @@
 import pytest
 from uuid import uuid4
 from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 from tomato_ai.domain import events
+from tomato_ai.adapters import event_bus, orm
+from tomato_ai import handlers
 
 
 def test_health_check(client: TestClient):
@@ -14,7 +16,8 @@ def test_health_check(client: TestClient):
 @pytest.mark.asyncio
 async def test_create_and_get_session(client: TestClient):
     user_id = uuid4()
-    response = client.post("/sessions/", json={"user_id": str(user_id)})
+    chat_id = 12345
+    response = client.post("/sessions/", json={"user_id": str(user_id), "chat_id": chat_id})
     assert response.status_code == 200
     data = response.json()
     assert data["user_id"] == str(user_id)
@@ -41,7 +44,8 @@ async def test_create_and_get_session(client: TestClient):
 @pytest.mark.asyncio
 async def test_create_session_with_type(client: TestClient, session_type: str, expected_duration: int):
     user_id = uuid4()
-    response = client.post("/sessions/", json={"user_id": str(user_id), "session_type": session_type})
+    chat_id = 12345
+    response = client.post("/sessions/", json={"user_id": str(user_id), "chat_id": chat_id, "session_type": session_type})
     assert response.status_code == 200
     data = response.json()
     assert data["user_id"] == str(user_id)
@@ -54,7 +58,8 @@ async def test_create_session_with_type(client: TestClient, session_type: str, e
 async def test_events_are_published(client: TestClient):
     with patch("tomato_ai.adapters.event_bus.publish", new_callable=AsyncMock) as mock_publish:
         user_id = uuid4()
-        response = client.post("/sessions/", json={"user_id": str(user_id)})
+        chat_id = 12345
+        response = client.post("/sessions/", json={"user_id": str(user_id), "chat_id": chat_id})
         assert response.status_code == 200
         data = response.json()
         session_id = data["session_id"]
@@ -98,3 +103,43 @@ async def test_telegram_webhook(client: TestClient):
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
         mock_app.process_update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch('tomato_ai.handlers.ReminderService')
+@patch('tomato_ai.handlers.get_session')
+async def test_schedule_reminder_handler(mock_get_session, mock_reminder_service):
+    # Arrange
+    user_id = uuid4()
+    chat_id = 12345
+    session_id = uuid4()
+
+    mock_db_session = MagicMock()
+    mock_pomodoro_session = orm.PomodoroSession(session_id=session_id, user_id=user_id, chat_id=chat_id)
+    mock_db_session.query.return_value.filter_by.return_value.first.return_value = mock_pomodoro_session
+    mock_get_session.return_value = iter([mock_db_session])
+
+    mock_service_instance = mock_reminder_service.return_value
+    mock_service_instance.schedule_reminder = AsyncMock()
+    event = events.SessionCompleted(session_id=session_id, user_id=user_id, session_type="work")
+
+    # Act
+    await handlers.schedule_reminder_on_session_completed(event)
+
+    # Assert
+    mock_service_instance.schedule_reminder.assert_awaited_once_with(user_id, chat_id)
+
+@pytest.mark.asyncio
+@patch('tomato_ai.handlers.ReminderService')
+async def test_cancel_reminder_handler(mock_reminder_service):
+    # Arrange
+    user_id = uuid4()
+    mock_service_instance = mock_reminder_service.return_value
+    mock_service_instance.cancel_reminder = AsyncMock()
+    event = events.SessionStarted(session_id=uuid4(), user_id=user_id, session_type="work")
+
+    # Act
+    await handlers.cancel_reminder_on_session_started(event)
+
+    # Assert
+    mock_service_instance.cancel_reminder.assert_awaited_once_with(user_id)
