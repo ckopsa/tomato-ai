@@ -1,7 +1,6 @@
 
 from datetime import datetime, timedelta
 from uuid import UUID
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.orm import Session
 
 from tomato_ai.adapters import event_bus, orm, telegram
@@ -78,6 +77,39 @@ class SessionNotifier:
         self.db_session.commit()
 
 
+class ReminderNotifier:
+    """
+    A domain service for notifying users about reminders.
+    """
+
+    def __init__(self, db_session: Session):
+        self.db_session = db_session
+
+    async def check_and_send_reminders(self):
+        """
+        Checks for pending reminders and sends a notification if the user does not have an active session.
+        """
+        pending_reminders = self.db_session.query(orm.Reminder).filter_by(state="pending").all()
+        for reminder in pending_reminders:
+            # Reminders are due 3 minutes after creation
+            if reminder.created_at + timedelta(minutes=3) < datetime.utcnow():
+                active_session = (
+                    self.db_session.query(orm.PomodoroSession)
+                    .filter_by(user_id=reminder.user_id, state="active")
+                    .first()
+                )
+                if not active_session:
+                    if notifier := telegram.get_telegram_notifier():
+                        await notifier.send_message(
+                            chat_id=reminder.chat_id,
+                            message="You don't have an active pomodoro session. Would you like to start one?",
+                        )
+                reminder.state = "triggered"
+                reminder.triggered_at = datetime.utcnow()
+                self.db_session.add(reminder)
+        self.db_session.commit()
+
+
 from uuid import uuid4
 
 class ReminderService:
@@ -85,58 +117,29 @@ class ReminderService:
     A domain service for scheduling and canceling reminders.
     """
 
-    def __init__(self, db_session: Session, scheduler: AsyncIOScheduler):
+    def __init__(self, db_session: Session):
         self.db_session = db_session
-        self.scheduler = scheduler
 
-    async def schedule_reminder(self, user_id: UUID, chat_id: int):
+    def schedule_reminder(self, user_id: UUID, chat_id: int):
         """
         Schedules a reminder for the user.
         """
-        run_date = datetime.now() + timedelta(minutes=3)
-        reminder_id = uuid4()
-        job = self.scheduler.add_job(self.check_in, "date", run_date=run_date, args=[str(user_id), reminder_id])
         reminder = orm.Reminder(
-            id=reminder_id,
+            id=uuid4(),
             user_id=user_id,
             chat_id=chat_id,
-            job_id=job.id,
             created_at=datetime.utcnow(),
             state="pending",
         )
         self.db_session.add(reminder)
         self.db_session.commit()
 
-    async def cancel_reminder(self, user_id: UUID):
+    def cancel_reminder(self, user_id: UUID):
         """
         Cancels any pending reminders for the user.
         """
         reminders = self.db_session.query(orm.Reminder).filter_by(user_id=user_id, state="pending").all()
         for reminder in reminders:
-            try:
-                self.scheduler.remove_job(reminder.job_id)
-            except Exception:
-                pass # Job already executed
             reminder.state = "cancelled"
             self.db_session.add(reminder)
         self.db_session.commit()
-
-    async def check_in(self, user_id: str, reminder_id: UUID):
-        """
-        Checks if the user has an active session and sends a reminder if not.
-        """
-        user_uuid = UUID(user_id)
-        active_session = self.db_session.query(orm.PomodoroSession).filter_by(user_id=user_uuid, state="active").first()
-        reminder = self.db_session.query(orm.Reminder).filter_by(id=reminder_id).first()
-        if not active_session and reminder:
-            if (notifier := telegram.get_telegram_notifier()):
-                await notifier.send_message(
-                    chat_id=reminder.chat_id,
-                    message="You don't have an active pomodoro session. Would you like to start one?"
-                )
-
-        if reminder:
-            reminder.state = "triggered"
-            reminder.triggered_at = datetime.utcnow()
-            self.db_session.add(reminder)
-            self.db_session.commit()

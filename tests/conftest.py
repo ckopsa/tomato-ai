@@ -13,8 +13,7 @@ from tomato_ai.config import settings
 @pytest.fixture()
 def client():
     with patch.object(settings, 'TELEGRAM_BOT_TOKEN', 'dummy-token'), \
-         patch("apscheduler.schedulers.background.BackgroundScheduler.start"), \
-         patch("apscheduler.schedulers.background.BackgroundScheduler.shutdown"):
+         patch.dict('os.environ', {'TESTING': 'True'}):
 
         test_engine = create_engine(
             "sqlite:///file:memdb1?mode=memory&cache=shared&uri=true",
