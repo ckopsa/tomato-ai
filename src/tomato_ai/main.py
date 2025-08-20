@@ -2,6 +2,7 @@ import logging
 
 from tomato_ai.entrypoints.fastapi_app import create_app
 from tomato_ai import bootstrap
+from tomato_ai.app_state import scheduler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -9,5 +10,6 @@ logging.getLogger("tomato_ai").setLevel(logging.INFO)
 
 # Bootstrap the application
 bootstrap.bootstrap()
+scheduler.start()
 
 app = create_app()

@@ -12,7 +12,8 @@ from tomato_ai.adapters.database import get_session
 from tomato_ai.agents import turbo_20_ollama_model
 from tomato_ai.config import settings
 from tomato_ai.domain import events
-from tomato_ai.domain.services import SessionManager
+from tomato_ai.domain.services import SessionManager, ReminderService
+from tomato_ai.app_state import scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,24 @@ async def send_telegram_notification_on_expiration(event: events.SessionExpired)
             chat_id=str(int(event.user_id)),
             message=f"Pomodoro session {event.session_id} has expired!",
         )
+
+
+async def schedule_reminder_on_session_completed(event: events.SessionCompleted):
+    """
+    Schedules a reminder when a session is completed.
+    """
+    db_session = next(get_session())
+    reminder_service = ReminderService(db_session, scheduler)
+    await reminder_service.schedule_reminder(event.user_id)
+
+
+async def cancel_reminder_on_session_started(event: events.SessionStarted):
+    """
+    Cancels any pending reminders when a session starts.
+    """
+    db_session = next(get_session())
+    reminder_service = ReminderService(db_session, scheduler)
+    await reminder_service.cancel_reminder(event.user_id)
 
 
 async def start_session_command(update: Update, context: CallbackContext, session_type: str) -> None:
