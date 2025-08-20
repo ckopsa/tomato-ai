@@ -10,6 +10,5 @@ logging.getLogger("tomato_ai").setLevel(logging.INFO)
 
 # Bootstrap the application
 bootstrap.bootstrap()
-scheduler.start()
 
 app = create_app()
