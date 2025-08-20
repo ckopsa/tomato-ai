@@ -1,3 +1,4 @@
+import os
 from uuid import UUID
 
 from fastapi import FastAPI, Depends, HTTPException, Request
@@ -14,7 +15,7 @@ from tomato_ai.adapters.database import get_session
 from tomato_ai.app_state import scheduler
 from tomato_ai.config import settings
 from tomato_ai.domain import models
-from tomato_ai.domain.services import SessionManager, SessionNotifier
+from tomato_ai.domain.services import SessionManager, SessionNotifier, ReminderNotifier
 from tomato_ai.entrypoints.schemas import PomodoroSessionCreate, PomodoroSessionRead, PomodoroSessionUpdateState
 
 
@@ -24,9 +25,17 @@ async def run_scheduler():
     await notifier.check_and_notify_expired_sessions()
 
 
+async def run_reminder_scheduler():
+    db_session = next(get_session())
+    notifier = ReminderNotifier(db_session)
+    await notifier.check_and_send_reminders()
+
+
 async def lifespan(app: FastAPI):
-    scheduler.add_job(run_scheduler, "interval", seconds=10)
-    scheduler.start()
+    if not os.environ.get("TESTING"):
+        scheduler.add_job(run_scheduler, "interval", seconds=10)
+        scheduler.add_job(run_reminder_scheduler, "interval", seconds=10)
+        scheduler.start()
 
     if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN != "dummy-token":
         ptb_app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
@@ -42,7 +51,8 @@ async def lifespan(app: FastAPI):
 
     if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN != "dummy-token":
         await app.state.ptb_app.shutdown()
-    scheduler.shutdown()
+    if not os.environ.get("TESTING"):
+        scheduler.shutdown()
 
 
 def create_app() -> FastAPI:
