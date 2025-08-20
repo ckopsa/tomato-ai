@@ -12,6 +12,7 @@ from tomato_ai.adapters.database import get_session
 from tomato_ai.agents import turbo_20_ollama_model
 from tomato_ai.config import settings
 from tomato_ai.domain import events
+from tomato_ai.domain.schemas import NotificationDelay
 from tomato_ai.domain.services import SessionManager, ReminderService
 
 logger = logging.getLogger(__name__)
@@ -80,8 +81,26 @@ def schedule_reminder_on_session_completed(event: events.SessionCompleted):
     db_session = next(get_session())
     session = db_session.query(orm.PomodoroSession).filter_by(session_id=event.session_id).first()
     if session:
+        try:
+            agent = get_agent(str(event.user_id))
+            prompt = (
+                f"The user has just completed a '{session.session_type}' session "
+                f"that lasted for {session.duration.total_seconds() / 60:.0f} minutes. "
+                "Based on this, how many minutes should we wait before sending a notification "
+                "to remind them to start a new session? "
+                "Consider that 'work' sessions are more demanding and might require a longer break."
+            )
+            result = agent.structured_output(
+                NotificationDelay,
+                prompt,
+            )
+            delay_minutes = result.delay_in_minutes
+        except Exception as e:
+            logger.error(f"Failed to get notification delay from LLM: {e}")
+            delay_minutes = 3
+
         reminder_service = ReminderService(db_session)
-        send_at = datetime.now(timezone.utc) + timedelta(minutes=3)
+        send_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
         reminder_service.schedule_reminder(event.user_id, session.chat_id, send_at)
 
 
