@@ -9,7 +9,7 @@ from telegram import Update
 from telegram.ext import CallbackContext
 from tomato_ai.adapters import telegram, orm
 from tomato_ai.adapters.database import get_session
-from tomato_ai.agents import turbo_20_ollama_model
+from tomato_ai.agents import turbo_20_ollama_model, turbo_120_ollama_model
 from tomato_ai.config import settings
 from tomato_ai.domain import events
 from tomato_ai.domain.schemas import NotificationDelay
@@ -27,8 +27,23 @@ def get_agent(session_id: str):
     
     You are responsible for notifying the user about the events of the pomodor session.
     
-    Your reponses should be only the message you want to send to the user.
+    Your responses should be only the message you want to send to the user.
     """
+    )
+
+
+def get_scheduler_agent(session_id: str):
+    return Agent(
+        model=turbo_120_ollama_model,
+        session_manager=FileSessionManager(session_id),
+        system_prompt="""
+        You are responsible for scheduling reminders for the user. You want the user to be diligent in their adherence to pomodoro sessions.
+        You should be stubborn, but not annoying in reminding the user to stay in their pomodoro workflow.
+        
+        Use whatever context you have to decide the delay for the reminder.
+        
+        Using the is to decide a single number 'delay_in_minutes' for the reminder.
+        """,
     )
 
 
@@ -82,17 +97,12 @@ def schedule_reminder_on_session_completed(event: events.SessionCompleted):
     session = db_session.query(orm.PomodoroSession).filter_by(session_id=event.session_id).first()
     if session:
         try:
-            agent = get_agent(str(event.user_id))
-            prompt = (
-                f"The user has just completed a '{session.session_type}' session "
-                f"that lasted for {session.duration.total_seconds() / 60:.0f} minutes. "
-                "Based on this, how many minutes should we wait before sending a notification "
-                "to remind them to start a new session? "
-                "Consider that 'work' sessions are more demanding and might require a longer break."
-            )
+            agent = get_scheduler_agent(str(event.user_id))
             result = agent.structured_output(
                 NotificationDelay,
-                prompt,
+                f"""
+                The user completed the pomodoro session of type {session.session_type}.
+                """
             )
             delay_minutes = result.delay_in_minutes
         except Exception as e:
