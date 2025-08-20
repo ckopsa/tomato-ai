@@ -1,7 +1,7 @@
 
 from sqlalchemy import Column, DateTime, Interval, String, Uuid
 from sqlalchemy.orm import declarative_base
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 Base = declarative_base()
 
@@ -20,6 +20,16 @@ class PomodoroSession(Base):
     duration = Column(Interval, nullable=False)
     user_id = Column(Uuid, nullable=False)
     task_id = Column(Uuid, nullable=True)
+
+class Reminder(Base):
+    __tablename__ = "reminders"
+
+    id = Column(Uuid, primary_key=True)
+    user_id = Column(Uuid, nullable=False)
+    job_id = Column(String, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    triggered_at = Column(DateTime, nullable=True)
+    state = Column(String, nullable=False, default="pending")
 
 
 def start_mappers():
