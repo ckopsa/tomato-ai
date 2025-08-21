@@ -18,4 +18,12 @@ class PomodoroStartAction(BaseModel):
     duration: int = 25
 
 
-AgentAction = Union[TelegramMessageAction, PomodoroScheduleNextAction, PomodoroStartAction]
+class AgentActionWrapper(BaseModel):
+    action: Literal["telegram_message", "pomodoro_schedule_next", "pomodoro_start"]
+    text: Optional[str] = None
+    buttons: Optional[list[str]] = None
+    time: Optional[str] = None
+    duration: Optional[int] = None
+
+
+AgentAction = AgentActionWrapper
