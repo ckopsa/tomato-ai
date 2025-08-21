@@ -147,7 +147,7 @@ async def handle_nudge(event: events.NudgeUser):
     user_zone_info: zoneinfo.ZoneInfo = zoneinfo.ZoneInfo(user.timezone)
 
     # 1. Gather context
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(user_zone_info).date()
     sessions_today = (
         db_session.query(orm.PomodoroSession)
         .filter(
