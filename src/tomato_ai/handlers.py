@@ -71,10 +71,16 @@ async def send_telegram_notification(event: events.SessionCompleted):
     """
     Sends a telegram notification when a session is completed.
     """
-    if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
+    db_session = next(get_session())
+    user = db_session.query(orm.User).filter_by(id=event.user_id).first()
+    if not user:
+        logger.error(f"User with id {event.user_id} not found.")
+        return
+
+    if notifier := telegram.get_telegram_notifier():
         await notifier.send_message(
-            chat_id=str(int(event.user_id)),
-            message=str(get_agent(str(event.user_id))(
+            chat_id=user.telegram_chat_id,
+            message=str(get_agent(str(user.telegram_chat_id))(
                 f"The user completed the pomodoro session of type {event.session_type}!")),
         )
 
@@ -83,11 +89,17 @@ async def send_telegram_notification_on_start(event: events.SessionStarted):
     """
     Sends a telegram notification when a session starts.
     """
-    if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
+    db_session = next(get_session())
+    user = db_session.query(orm.User).filter_by(id=event.user_id).first()
+    if not user:
+        logger.error(f"User with id {event.user_id} not found.")
+        return
+
+    if notifier := telegram.get_telegram_notifier():
         await notifier.send_message(
-            chat_id=str(int(event.user_id)),
+            chat_id=user.telegram_chat_id,
             message=str(
-                get_agent(str(event.user_id))(f"The user started a pomodoro session of type {event.session_type}!")),
+                get_agent(str(user.telegram_chat_id))(f"The user started a pomodoro session of type {event.session_type}!")),
         )
 
 
@@ -95,9 +107,15 @@ async def send_telegram_notification_on_expiration(event: events.SessionExpired)
     """
     Sends a telegram notification when a session expires.
     """
-    if (notifier := telegram.get_telegram_notifier()) and settings.TELEGRAM_CHAT_ID:
+    db_session = next(get_session())
+    user = db_session.query(orm.User).filter_by(id=event.user_id).first()
+    if not user:
+        logger.error(f"User with id {event.user_id} not found.")
+        return
+
+    if notifier := telegram.get_telegram_notifier():
         await notifier.send_message(
-            chat_id=str(int(event.user_id)),
+            chat_id=user.telegram_chat_id,
             message=f"Pomodoro session {event.session_id} has expired!",
         )
 
@@ -144,7 +162,10 @@ async def handle_nudge(event: events.NudgeUser):
         reminder_service.schedule_reminder(event.user_id, event.chat_id, send_at)
         return
 
-    user_zone_info: zoneinfo.ZoneInfo = zoneinfo.ZoneInfo(user.timezone)
+    try:
+        user_zone_info: zoneinfo.ZoneInfo = zoneinfo.ZoneInfo(user.timezone)
+    except zoneinfo.ZoneInfoNotFoundError:
+        user_zone_info: zoneinfo.ZoneInfo = zoneinfo.ZoneInfo("UTC")
 
     # 1. Gather context
     today = datetime.now(user_zone_info).date()
@@ -282,7 +303,7 @@ async def start_session_command(update: Update, context: CallbackContext, sessio
         if (notifier := telegram.get_telegram_notifier()):
             duration_minutes = new_session.duration.total_seconds() / 60
             start_ts = int(new_session.start_time.timestamp())
-            end_ts = int((datetime.now(timezone.utc) + new_session.duration).timestamp())  # end time in seconds
+            end_ts = int((new_session.start_time + new_session.duration).timestamp())  # end time in seconds
 
             message = (
                 f"{new_session.session_type.replace('_', ' ').title()} session started! "
