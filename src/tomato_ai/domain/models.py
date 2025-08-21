@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -91,3 +91,15 @@ class PomodoroSession:
 WORK = SessionType(type="work", default_duration=timedelta(minutes=25))
 SHORT_BREAK = SessionType(type="short_break", default_duration=timedelta(minutes=5))
 LONG_BREAK = SessionType(type="long_break", default_duration=timedelta(minutes=15))
+
+
+@dataclass
+class User:
+    telegram_chat_id: str
+    id: UUID = field(default_factory=uuid4)
+    timezone: str = "UTC"
+    work_start: time = time(9, 0)
+    work_end: time = time(17, 0)
+    desired_sessions_per_day: int = 8
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

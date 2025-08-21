@@ -236,20 +236,23 @@ async def start_session_command(update: Update, context: CallbackContext, sessio
     Handles the /start command, starting a new pomodoro session.
     """
     if update.message and update.message.from_user:
-        user_id = update.message.from_user.id
-        chat_id = update.message.chat_id
+        telegram_chat_id = str(update.message.chat_id)
+        db_session = next(get_session())
+
+        user = db_session.query(orm.User).filter_by(telegram_chat_id=telegram_chat_id).first()
+        if not user:
+            user = orm.User(telegram_chat_id=telegram_chat_id)
+            db_session.add(user)
+            db_session.commit()
+            db_session.refresh(user)
 
         session_manager = SessionManager()
-        # This is a hack to convert telegram's integer user_id to a UUID.
-        # A proper implementation would have a user management system.
-        user_uuid = UUID(int=user_id)
 
-        new_session = session_manager.start_new_session(user_id=user_uuid, session_type=session_type)
+        new_session = session_manager.start_new_session(user_id=user.id, session_type=session_type)
 
-        db_session = next(get_session())
         orm_session = orm.PomodoroSession(
             session_id=new_session.session_id,
-            chat_id=chat_id,
+            chat_id=int(telegram_chat_id),
             start_time=new_session.start_time,
             end_time=new_session.end_time,
             state=new_session.state,
@@ -291,7 +294,7 @@ async def start_session_command(update: Update, context: CallbackContext, sessio
             ]
 
             await notifier.send_message(
-                chat_id=str(chat_id),
+                chat_id=telegram_chat_id,
                 message=message,
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
@@ -348,7 +351,13 @@ async def not_now_button(update: Update, context: CallbackContext) -> None:
     send_at = datetime.now(timezone.utc) + timedelta(minutes=15)
 
     if query.message:
-        user_id = UUID(int=query.from_user.id)
-        chat_id = query.message.chat_id
-        reminder_service.schedule_reminder(user_id, chat_id, send_at, escalation_count=1)
+        telegram_chat_id = str(query.message.chat_id)
+        user = db_session.query(orm.User).filter_by(telegram_chat_id=telegram_chat_id).first()
+        if not user:
+            user = orm.User(telegram_chat_id=telegram_chat_id)
+            db_session.add(user)
+            db_session.commit()
+            db_session.refresh(user)
+
+        reminder_service.schedule_reminder(user.id, int(telegram_chat_id), send_at, escalation_count=1)
         await query.edit_message_text(text="OK, I'll remind you in 15 minutes.")
