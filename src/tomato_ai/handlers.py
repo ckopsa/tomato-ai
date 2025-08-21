@@ -1,6 +1,7 @@
 import logging
 import zoneinfo
 from datetime import datetime, timezone, timedelta
+from time import strftime
 
 from strands import Agent
 from strands.session.file_session_manager import FileSessionManager
@@ -184,14 +185,15 @@ async def handle_nudge(event: events.NudgeUser):
         .order_by(orm.PomodoroSession.end_time.desc())
         .first()
     )
-    last_activity = last_session.end_time.isoformat() if last_session else ""
+    last_activity = last_session.end_time.astimezone(user_zone_info).strftime("%A, %B %d, %Y %I:%M %p") if last_session else ""
 
     context = {
         "sessions_today": sessions_today,
-        "time": datetime.now(user_zone_info).strftime("%H:%M"),
+        "time": datetime.now(user_zone_info).strftime("%A, %B %d, %Y %I:%M %p"),
         "state": "idle",
         "last_activity": last_activity,
         "escalations_today": event.escalation_count,
+        "desired_sessions": user.desired_sessions_per_day
     }
 
     # 2. Call the negotiation agent
