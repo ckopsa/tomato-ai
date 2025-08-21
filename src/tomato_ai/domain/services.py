@@ -102,11 +102,22 @@ class ReminderNotifier:
                 .first()
             )
             if not active_session:
-                if notifier := telegram.get_telegram_notifier():
-                    await notifier.send_message(
+                last_session = (
+                    self.db_session.query(orm.PomodoroSession)
+                    .filter_by(user_id=reminder.user_id, state="completed")
+                    .order_by(orm.PomodoroSession.end_time.desc())
+                    .first()
+                )
+                session_type = last_session.session_type if last_session else "work"
+
+                await event_bus.publish(
+                    events.NudgeUser(
+                        user_id=reminder.user_id,
                         chat_id=reminder.chat_id,
-                        message="You don't have an active pomodoro session. Would you like to start one?",
+                        escalation_count=reminder.escalation_count,
+                        session_type=session_type,
                     )
+                )
             reminder.state = "triggered"
             reminder.triggered_at = now
             self.db_session.add(reminder)
@@ -123,7 +134,7 @@ class ReminderService:
     def __init__(self, db_session: Session):
         self.db_session = db_session
 
-    def schedule_reminder(self, user_id: UUID, chat_id: int, send_at: datetime):
+    def schedule_reminder(self, user_id: UUID, chat_id: int, send_at: datetime, escalation_count: int = 0):
         """
         Schedules a reminder for the user.
         """
@@ -134,6 +145,7 @@ class ReminderService:
             created_at=datetime.now(timezone.utc),
             send_at=send_at,
             state="pending",
+            escalation_count=escalation_count,
         )
         self.db_session.add(reminder)
         self.db_session.commit()
@@ -146,4 +158,11 @@ class ReminderService:
         for reminder in reminders:
             reminder.state = "cancelled"
             self.db_session.add(reminder)
+        self.db_session.commit()
+
+    def reset_escalation_counts(self):
+        """
+        Resets the escalation count for all reminders.
+        """
+        self.db_session.query(orm.Reminder).update({"escalation_count": 0})
         self.db_session.commit()

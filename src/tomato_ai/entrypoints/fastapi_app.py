@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler
 from telegram.ext import filters
 
 from tomato_ai import handlers
@@ -31,10 +31,17 @@ async def run_reminder_scheduler():
     await notifier.check_and_send_reminders()
 
 
+async def run_daily_reset():
+    db_session = next(get_session())
+    service = ReminderService(db_session)
+    service.reset_escalation_counts()
+
+
 async def lifespan(app: FastAPI):
     if not os.environ.get("TESTING"):
         scheduler.add_job(run_scheduler, "interval", seconds=10)
         scheduler.add_job(run_reminder_scheduler, "interval", seconds=10)
+        scheduler.add_job(run_daily_reset, "cron", hour=0)
         scheduler.start()
 
     if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN != "dummy-token":
@@ -44,6 +51,8 @@ async def lifespan(app: FastAPI):
         ptb_app.add_handler(CommandHandler("break", handlers.start_short_break_command))
         ptb_app.add_handler(CommandHandler("short_break", handlers.start_short_break_command))
         ptb_app.add_handler(CommandHandler("long_break", handlers.start_long_break_command))
+        ptb_app.add_handler(CallbackQueryHandler(handlers.start_button, pattern="^start$"))
+        ptb_app.add_handler(CallbackQueryHandler(handlers.not_now_button, pattern="^not now$"))
         await ptb_app.initialize()
         app.state.ptb_app = ptb_app
 

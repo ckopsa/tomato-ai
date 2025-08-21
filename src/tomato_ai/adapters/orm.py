@@ -31,6 +31,7 @@ class Reminder(Base):
     send_at = Column(DateTime(timezone=True), nullable=True)
     triggered_at = Column(DateTime(timezone=True), nullable=True)
     state = Column(String, nullable=False, default="pending")
+    escalation_count = Column(Integer, nullable=False, default=0)
 
 
 def start_mappers():
