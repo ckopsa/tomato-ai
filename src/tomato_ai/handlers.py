@@ -171,7 +171,25 @@ async def handle_nudge(event: events.NudgeUser):
 
     # 2. Call the negotiation agent
     agent = negotiation_agent
-    action = agent.structured_output(AgentAction, str(context))
+    wrapper_action = agent.structured_output(AgentAction, str(context))
+
+    # Construct the correct action object based on action_type
+    if wrapper_action.action == "telegram_message":
+        action = TelegramMessageAction(
+            text=wrapper_action.text,
+            buttons=wrapper_action.buttons
+        )
+    elif wrapper_action.action == "pomodoro_schedule_next":
+        action = PomodoroScheduleNextAction(
+            time=wrapper_action.time
+        )
+    elif wrapper_action.action == "pomodoro_start":
+        action = PomodoroStartAction(
+            duration=wrapper_action.duration
+        )
+    else:
+        logger.warning(f"Unknown action type from agent: {wrapper_action.action}")
+        return # Exit if action type is unknown
 
     # 3. Execute the action
     if isinstance(action, TelegramMessageAction):
