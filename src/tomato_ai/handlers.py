@@ -1,19 +1,20 @@
 import logging
+import zoneinfo
 from datetime import datetime, timezone, timedelta
-from uuid import UUID
 
 from strands import Agent
 from strands.session.file_session_manager import FileSessionManager
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import WebAppInfo
 from telegram.ext import CallbackContext
+
 from tomato_ai.adapters import telegram, orm
 from tomato_ai.adapters.database import get_session
 from tomato_ai.agents import negotiation_agent, turbo_20_ollama_model, turbo_120_ollama_model
 from tomato_ai.config import settings
 from tomato_ai.domain import events
-from tomato_ai.domain.agent_actions import AgentAction, PomodoroScheduleNextAction, PomodoroStartAction, TelegramMessageAction
-from tomato_ai.domain.schemas import NotificationDelay
+from tomato_ai.domain.agent_actions import AgentAction, PomodoroScheduleNextAction, PomodoroStartAction, \
+    TelegramMessageAction
 from tomato_ai.domain.services import SessionManager, ReminderService
 
 logger = logging.getLogger(__name__)
@@ -129,18 +130,21 @@ async def handle_nudge(event: events.NudgeUser):
     """
     logger.info(f"Handling nudge for user {event.user_id}")
     db_session = next(get_session())
+    user = db_session.query(orm.User).filter_by(id=event.user_id).first()
 
     if event.escalation_count >= settings.MAX_ESCALATIONS:
         logger.info(f"Max escalations reached for user {event.user_id}")
         if notifier := telegram.get_telegram_notifier():
             await notifier.send_message(
-                chat_id=str(event.chat_id),
+                chat_id=str(user.telegram_chat_id),
                 message="Looks like today’s a tough one — let’s pick this back up tomorrow morning.",
             )
         reminder_service = ReminderService(db_session)
         send_at = datetime.now(timezone.utc) + timedelta(days=1)
         reminder_service.schedule_reminder(event.user_id, event.chat_id, send_at)
         return
+
+    user_zone_info: zoneinfo.ZoneInfo = zoneinfo.ZoneInfo(user.timezone)
 
     # 1. Gather context
     today = datetime.now(timezone.utc).date()
@@ -149,7 +153,7 @@ async def handle_nudge(event: events.NudgeUser):
         .filter(
             orm.PomodoroSession.user_id == event.user_id,
             orm.PomodoroSession.state == "completed",
-            orm.PomodoroSession.start_time >= datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc),
+            orm.PomodoroSession.start_time >= datetime.combine(today, datetime.min.time(), tzinfo=user_zone_info),
         )
         .count()
     )
@@ -163,7 +167,7 @@ async def handle_nudge(event: events.NudgeUser):
 
     context = {
         "sessions_today": sessions_today,
-        "time": datetime.now(timezone.utc).strftime("%H:%M"),
+        "time": datetime.now(user_zone_info).strftime("%H:%M"),
         "state": "idle",
         "last_activity": last_activity,
         "escalations_today": event.escalation_count,
@@ -189,7 +193,7 @@ async def handle_nudge(event: events.NudgeUser):
         )
     else:
         logger.warning(f"Unknown action type from agent: {wrapper_action.action}")
-        return # Exit if action type is unknown
+        return  # Exit if action type is unknown
 
     # 3. Execute the action
     if isinstance(action, TelegramMessageAction):
