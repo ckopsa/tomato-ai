@@ -1,6 +1,8 @@
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
 from sqlalchemy import Column, DateTime, Interval, String, Uuid, Integer, Time
 from sqlalchemy.orm import declarative_base
-from datetime import datetime, timedelta, timezone
 
 Base = declarative_base()
 
@@ -21,10 +23,11 @@ class PomodoroSession(Base):
     user_id = Column(Uuid, nullable=False)
     task_id = Column(Uuid, nullable=True)
 
+
 class Reminder(Base):
     __tablename__ = "reminders"
 
-    id = Column(Uuid, primary_key=True)
+    id = Column(Uuid, primary_key=True, default=uuid4)
     user_id = Column(Uuid, nullable=False)
     chat_id = Column(Integer, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
@@ -37,14 +40,15 @@ class Reminder(Base):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Uuid, primary_key=True)
+    id = Column(Uuid, primary_key=True, default=uuid4)
     telegram_chat_id = Column(String, unique=True, nullable=False)
     timezone = Column(String, nullable=False, server_default="UTC")
     work_start = Column(Time, nullable=False, server_default="09:00:00")
     work_end = Column(Time, nullable=False, server_default="17:00:00")
     desired_sessions_per_day = Column(Integer, nullable=False, server_default="8")
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
 
 
 def start_mappers():
