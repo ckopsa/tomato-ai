@@ -14,5 +14,6 @@ def bootstrap():
     event_bus.register(events.SessionCompleted, handlers.send_telegram_notification)
     event_bus.register(events.SessionStarted, handlers.send_telegram_notification_on_start)
     event_bus.register(events.SessionExpired, handlers.send_telegram_notification_on_expiration)
-    event_bus.register(events.SessionCompleted, handlers.schedule_reminder_on_session_completed)
+    event_bus.register(events.SessionCompleted, handlers.schedule_nudge_on_session_completed)
     event_bus.register(events.SessionStarted, handlers.cancel_reminder_on_session_started)
+    event_bus.register(events.NudgeUser, handlers.handle_nudge)

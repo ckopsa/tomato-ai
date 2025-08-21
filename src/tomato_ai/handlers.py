@@ -5,17 +5,29 @@ from uuid import UUID
 from strands import Agent
 from strands.session.file_session_manager import FileSessionManager
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackContext
 from tomato_ai.adapters import telegram, orm
 from tomato_ai.adapters.database import get_session
-from tomato_ai.agents import turbo_20_ollama_model, turbo_120_ollama_model
+from tomato_ai.agents import negotiation_agent, turbo_20_ollama_model, turbo_120_ollama_model
 from tomato_ai.config import settings
 from tomato_ai.domain import events
+from tomato_ai.domain.agent_actions import AgentAction, PomodoroScheduleNextAction, PomodoroStartAction, TelegramMessageAction
 from tomato_ai.domain.schemas import NotificationDelay
 from tomato_ai.domain.services import SessionManager, ReminderService
 
 logger = logging.getLogger(__name__)
+
+
+def parse_time(time_str: str) -> timedelta:
+    if time_str.endswith("m"):
+        return timedelta(minutes=int(time_str[:-1]))
+    elif time_str.endswith("h"):
+        return timedelta(hours=int(time_str[:-1]))
+    elif time_str == "tomorrow":
+        return timedelta(days=1)
+    else:
+        return timedelta(minutes=15)  # default
 
 
 def get_agent(session_id: str):
@@ -89,29 +101,17 @@ async def send_telegram_notification_on_expiration(event: events.SessionExpired)
         )
 
 
-def schedule_reminder_on_session_completed(event: events.SessionCompleted):
+def schedule_nudge_on_session_completed(event: events.SessionCompleted):
     """
-    Schedules a reminder when a session is completed.
+    Schedules a nudge when a session is completed.
     """
     db_session = next(get_session())
     session = db_session.query(orm.PomodoroSession).filter_by(session_id=event.session_id).first()
     if session:
-        try:
-            agent = get_scheduler_agent(str(event.user_id))
-            result = agent.structured_output(
-                NotificationDelay,
-                f"""
-                The user completed the pomodoro session of type {session.session_type}.
-                """
-            )
-            delay_minutes = result.delay_in_minutes
-        except Exception as e:
-            logger.error(f"Failed to get notification delay from LLM: {e}")
-            delay_minutes = 3
-
+        delay_minutes = 3
         reminder_service = ReminderService(db_session)
         send_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
-        reminder_service.schedule_reminder(event.user_id, session.chat_id, send_at)
+        reminder_service.schedule_reminder(event.user_id, session.chat_id, send_at, escalation_count=1)
 
 
 def cancel_reminder_on_session_started(event: events.SessionStarted):
@@ -121,6 +121,96 @@ def cancel_reminder_on_session_started(event: events.SessionStarted):
     db_session = next(get_session())
     reminder_service = ReminderService(db_session)
     reminder_service.cancel_reminder(event.user_id)
+
+
+async def handle_nudge(event: events.NudgeUser):
+    """
+    Handles a nudge event.
+    """
+    logger.info(f"Handling nudge for user {event.user_id}")
+    db_session = next(get_session())
+
+    if event.escalation_count >= settings.MAX_ESCALATIONS:
+        logger.info(f"Max escalations reached for user {event.user_id}")
+        if notifier := telegram.get_telegram_notifier():
+            await notifier.send_message(
+                chat_id=str(event.chat_id),
+                message="Looks like today’s a tough one — let’s pick this back up tomorrow morning.",
+            )
+        reminder_service = ReminderService(db_session)
+        send_at = datetime.now(timezone.utc) + timedelta(days=1)
+        reminder_service.schedule_reminder(event.user_id, event.chat_id, send_at)
+        return
+
+    # 1. Gather context
+    today = datetime.now(timezone.utc).date()
+    sessions_today = (
+        db_session.query(orm.PomodoroSession)
+        .filter(
+            orm.PomodoroSession.user_id == event.user_id,
+            orm.PomodoroSession.state == "completed",
+            orm.PomodoroSession.start_time >= datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc),
+        )
+        .count()
+    )
+    last_session = (
+        db_session.query(orm.PomodoroSession)
+        .filter(orm.PomodoroSession.user_id == event.user_id, orm.PomodoroSession.state == "completed")
+        .order_by(orm.PomodoroSession.end_time.desc())
+        .first()
+    )
+    last_activity = last_session.end_time.isoformat() if last_session else ""
+
+    context = {
+        "sessions_today": sessions_today,
+        "time": datetime.now(timezone.utc).strftime("%H:%M"),
+        "state": "idle",
+        "last_activity": last_activity,
+        "escalations_today": event.escalation_count,
+    }
+
+    # 2. Call the negotiation agent
+    agent = negotiation_agent
+    action = agent.structured_output(AgentAction, str(context))
+
+    # 3. Execute the action
+    if isinstance(action, TelegramMessageAction):
+        if notifier := telegram.get_telegram_notifier():
+            keyboard = []
+            if action.buttons:
+                keyboard = [
+                    [InlineKeyboardButton(text=button, callback_data=button.lower()) for button in action.buttons]
+                ]
+
+            await notifier.send_message(
+                chat_id=str(event.chat_id),
+                message=action.text,
+                reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
+            )
+        # Schedule the next nudge if the user doesn't respond
+        reminder_service = ReminderService(db_session)
+        send_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+        reminder_service.schedule_reminder(
+            event.user_id, event.chat_id, send_at, escalation_count=event.escalation_count + 1
+        )
+
+    elif isinstance(action, PomodoroScheduleNextAction):
+        reminder_service = ReminderService(db_session)
+        delay = parse_time(action.time)
+        send_at = datetime.now(timezone.utc) + delay
+        reminder_service.schedule_reminder(
+            event.user_id, event.chat_id, send_at, escalation_count=event.escalation_count + 1
+        )
+    elif isinstance(action, PomodoroStartAction):
+        if notifier := telegram.get_telegram_notifier():
+            keyboard = [[InlineKeyboardButton(text="Start", callback_data="start")]]
+            await notifier.send_message(
+                chat_id=str(event.chat_id),
+                message="Ready to start a new session?",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+    else:
+        logger.warning(f"Unhandled action type: {action.action}")
 
 
 async def start_session_command(update: Update, context: CallbackContext, session_type: str) -> None:
@@ -219,3 +309,28 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
         agent_response = get_agent(str(update.effective_chat.id))(user_message)
         response = str(agent_response)
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+
+
+async def start_button(update: Update, context: CallbackContext) -> None:
+    """
+    Handles the 'Start' button press.
+    """
+    await start_session_command(update, context, "work")
+
+
+async def not_now_button(update: Update, context: CallbackContext) -> None:
+    """
+    Handles the 'Not now' button press.
+    """
+    query = update.callback_query
+    await query.answer()
+
+    db_session = next(get_session())
+    reminder_service = ReminderService(db_session)
+    send_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+    if query.message:
+        user_id = UUID(int=query.from_user.id)
+        chat_id = query.message.chat_id
+        reminder_service.schedule_reminder(user_id, chat_id, send_at, escalation_count=1)
+        await query.edit_message_text(text="OK, I'll remind you in 15 minutes.")

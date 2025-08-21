@@ -49,8 +49,8 @@ class TestReminderService:
 
 @pytest.mark.asyncio
 class TestReminderNotifier:
-    @patch('tomato_ai.adapters.telegram.get_telegram_notifier')
-    async def test_check_and_send_reminders_sends_notification(self, mock_get_notifier, mock_db_session):
+    @patch('tomato_ai.domain.services.event_bus.publish')
+    async def test_check_and_send_reminders_publishes_nudge_event(self, mock_publish, mock_db_session):
         # Arrange
         notifier = ReminderNotifier(db_session=mock_db_session)
         user_id = uuid4()
@@ -64,21 +64,18 @@ class TestReminderNotifier:
         mock_db_session.query.return_value.filter.return_value.all.return_value = [reminder]
         mock_db_session.query.return_value.filter_by.return_value.first.return_value = None  # No active session
 
-        mock_telegram_notifier = AsyncMock()
-        mock_get_notifier.return_value = mock_telegram_notifier
-
         # Act
         await notifier.check_and_send_reminders()
 
         # Assert
-        mock_telegram_notifier.send_message.assert_awaited_once()
+        mock_publish.assert_awaited_once()
         assert reminder.state == 'triggered'
         mock_db_session.add.assert_called_once_with(reminder)
         mock_db_session.commit.assert_called_once()
 
-    @patch('tomato_ai.adapters.telegram.get_telegram_notifier')
-    async def test_check_and_send_reminders_does_not_send_notification_if_active_session(
-        self, mock_get_notifier, mock_db_session
+    @patch('tomato_ai.domain.services.event_bus.publish')
+    async def test_check_and_send_reminders_does_not_publish_if_active_session(
+        self, mock_publish, mock_db_session
     ):
         # Arrange
         notifier = ReminderNotifier(db_session=mock_db_session)
@@ -93,14 +90,11 @@ class TestReminderNotifier:
         mock_db_session.query.return_value.filter.return_value.all.return_value = [reminder]
         mock_db_session.query.return_value.filter_by.return_value.first.return_value = orm.PomodoroSession() # Active session
 
-        mock_telegram_notifier = AsyncMock()
-        mock_get_notifier.return_value = mock_telegram_notifier
-
         # Act
         await notifier.check_and_send_reminders()
 
         # Assert
-        mock_telegram_notifier.send_message.assert_not_awaited()
+        mock_publish.assert_not_awaited()
         assert reminder.state == 'triggered'
         mock_db_session.add.assert_called_once_with(reminder)
         mock_db_session.commit.assert_called_once()

@@ -17,6 +17,8 @@ class Settings(BaseSettings):
 
     OLLAMA_API_KEY: str | None = None
 
+    MAX_ESCALATIONS: int = 3
+
     @property
     def database_url(self) -> PostgresDsn:
         if self.TEST_DATABASE_URL:

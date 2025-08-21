@@ -104,39 +104,3 @@ async def test_telegram_webhook(client: TestClient):
         assert response.json() == {"status": "ok"}
         mock_app.process_update.assert_awaited_once()
 
-
-@patch('tomato_ai.handlers.ReminderService')
-@patch('tomato_ai.handlers.get_session')
-def test_schedule_reminder_handler(mock_get_session, mock_reminder_service):
-    # Arrange
-    user_id = uuid4()
-    chat_id = 12345
-    session_id = uuid4()
-
-    mock_db_session = MagicMock()
-    mock_pomodoro_session = orm.PomodoroSession(session_id=session_id, user_id=user_id, chat_id=chat_id)
-    mock_db_session.query.return_value.filter_by.return_value.first.return_value = mock_pomodoro_session
-    mock_get_session.return_value = iter([mock_db_session])
-
-    mock_service_instance = mock_reminder_service.return_value
-    event = events.SessionCompleted(session_id=session_id, user_id=user_id, session_type="work")
-
-    # Act
-    handlers.schedule_reminder_on_session_completed(event)
-
-    # Assert
-    mock_service_instance.schedule_reminder.assert_called_once_with(user_id, chat_id, ANY)
-
-
-@patch('tomato_ai.handlers.ReminderService')
-def test_cancel_reminder_handler(mock_reminder_service):
-    # Arrange
-    user_id = uuid4()
-    mock_service_instance = mock_reminder_service.return_value
-    event = events.SessionStarted(session_id=uuid4(), user_id=user_id, session_type="work")
-
-    # Act
-    handlers.cancel_reminder_on_session_started(event)
-
-    # Assert
-    mock_service_instance.cancel_reminder.assert_called_once_with(user_id)

@@ -20,6 +20,17 @@ class SessionStarted(Event):
 
 
 @dataclass(frozen=True)
+class NudgeUser(Event):
+    """
+    Event raised to nudge the user.
+    """
+    user_id: UUID
+    chat_id: int
+    escalation_count: int
+    session_type: str
+
+
+@dataclass(frozen=True)
 class SessionCompleted(Event):
     """
     Event raised when a session is completed.
