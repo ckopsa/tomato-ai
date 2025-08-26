@@ -53,3 +53,14 @@ class User(Base):
 
 def start_mappers():
     pass  # For now, we are using active record pattern
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Uuid, primary_key=True, default=uuid4)
+    user_id = Column(Uuid, nullable=False)
+    chat_id = Column(Integer, nullable=False)
+    message = Column(String, nullable=False)
+    sender = Column(String, nullable=False)  # "user" or "agent"
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

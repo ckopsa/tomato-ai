@@ -187,13 +187,30 @@ async def handle_nudge(event: events.NudgeUser):
     )
     last_activity = last_session.end_time.astimezone(user_zone_info).strftime("%A, %B %d, %Y %I:%M %p") if last_session else ""
 
+    conversation_history = (
+        db_session.query(orm.Message)
+        .filter(orm.Message.user_id == event.user_id)
+        .order_by(orm.Message.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    conversation_history.reverse()  # To have the messages in chronological order
+
     context = {
         "sessions_today": sessions_today,
         "time": datetime.now(user_zone_info).strftime("%A, %B %d, %Y %I:%M %p"),
         "state": "idle",
         "last_activity": last_activity,
         "escalations_today": event.escalation_count,
-        "desired_sessions": user.desired_sessions_per_day
+        "desired_sessions": user.desired_sessions_per_day,
+        "conversation_history": [
+            {
+                "sender": message.sender,
+                "message": message.message,
+                "timestamp": message.created_at.isoformat(),
+            }
+            for message in conversation_history
+        ],
     }
 
     # 2. Call the negotiation agent
@@ -232,6 +249,14 @@ async def handle_nudge(event: events.NudgeUser):
                 message=action.text,
                 reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
             )
+            message = orm.Message(
+                user_id=user.id,
+                chat_id=event.chat_id,
+                message=action.text,
+                sender="agent",
+            )
+            db_session.add(message)
+            db_session.commit()
         # Schedule the next nudge if the user doesn't respond
         reminder_service = ReminderService(db_session)
         send_at = datetime.now(timezone.utc) + timedelta(minutes=10)
@@ -352,8 +377,26 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
     """
     Handles incoming messages and responds with a simple echo.
     """
-    if update.message and update.message.text:
+    if update.message and update.message.text and update.message.from_user:
+        db_session = next(get_session())
+        telegram_chat_id = str(update.message.chat_id)
+        user = db_session.query(orm.User).filter_by(telegram_chat_id=telegram_chat_id).first()
+        if not user:
+            user = orm.User(telegram_chat_id=telegram_chat_id)
+            db_session.add(user)
+            db_session.commit()
+            db_session.refresh(user)
+
         user_message = update.message.text
+        message = orm.Message(
+            user_id=user.id,
+            chat_id=update.message.chat_id,
+            message=user_message,
+            sender="user",
+        )
+        db_session.add(message)
+        db_session.commit()
+
         agent_response = get_agent(str(update.effective_chat.id))(user_message)
         response = str(agent_response)
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response)

@@ -43,8 +43,27 @@ class TestNudgeHandlers:
         chat_id = 12345
         event = events.NudgeUser(user_id=user_id, chat_id=chat_id, escalation_count=1, session_type="work")
 
-        mock_db_session.query.return_value.filter.return_value.count.return_value = 1
-        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = orm.PomodoroSession(end_time=datetime.now(timezone.utc))
+        mock_user_query = MagicMock()
+        mock_user = orm.User(id=user_id, timezone="UTC", desired_sessions_per_day=8)
+        mock_user_query.filter_by.return_value.first.return_value = mock_user
+
+        mock_session_query = MagicMock()
+        mock_session_query.filter.return_value.count.return_value = 1
+        mock_session_query.filter.return_value.order_by.return_value.first.return_value = orm.PomodoroSession(end_time=datetime.now(timezone.utc))
+
+        mock_message_query = MagicMock()
+        mock_message_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
+
+        def query_side_effect(model):
+            if model == orm.User:
+                return mock_user_query
+            elif model == orm.PomodoroSession:
+                return mock_session_query
+            elif model == orm.Message:
+                return mock_message_query
+            return MagicMock()
+
+        mock_db_session.query.side_effect = query_side_effect
 
         with patch('tomato_ai.handlers.get_session') as mock_get_session, \
              patch('tomato_ai.handlers.negotiation_agent') as mock_agent, \
@@ -71,8 +90,27 @@ class TestNudgeHandlers:
         chat_id = 12345
         event = events.NudgeUser(user_id=user_id, chat_id=chat_id, escalation_count=1, session_type="work")
 
-        mock_db_session.query.return_value.filter.return_value.count.return_value = 1
-        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = orm.PomodoroSession(end_time=datetime.now(timezone.utc))
+        mock_user_query = MagicMock()
+        mock_user = orm.User(id=user_id, timezone="UTC", desired_sessions_per_day=8)
+        mock_user_query.filter_by.return_value.first.return_value = mock_user
+
+        mock_session_query = MagicMock()
+        mock_session_query.filter.return_value.count.return_value = 1
+        mock_session_query.filter.return_value.order_by.return_value.first.return_value = orm.PomodoroSession(end_time=datetime.now(timezone.utc))
+
+        mock_message_query = MagicMock()
+        mock_message_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
+
+        def query_side_effect(model):
+            if model == orm.User:
+                return mock_user_query
+            elif model == orm.PomodoroSession:
+                return mock_session_query
+            elif model == orm.Message:
+                return mock_message_query
+            return MagicMock()
+
+        mock_db_session.query.side_effect = query_side_effect
 
         with patch('tomato_ai.handlers.get_session') as mock_get_session, \
              patch('tomato_ai.handlers.negotiation_agent') as mock_agent, \
