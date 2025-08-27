@@ -240,8 +240,19 @@ async def handle_nudge(event: events.NudgeUser):
         )
 
     elif isinstance(action, PomodoroScheduleNextAction):
+        scheduler_agent = get_scheduler_agent(str(event.chat_id))
+        scheduler_context = {
+            "negotiation_agent_output": action.model_dump(),
+            "user_history": context,
+        }
+        try:
+            delay_in_minutes = int(str(scheduler_agent(str(scheduler_context))))
+        except ValueError:
+            logger.warning("Could not parse delay from scheduler agent, defaulting to 15 minutes.")
+            delay_in_minutes = 15
+
         reminder_service = ReminderService(db_session)
-        delay = parse_time(action.time)
+        delay = timedelta(minutes=delay_in_minutes)
         send_at = datetime.now(timezone.utc) + delay
         reminder_service.schedule_reminder(
             event.user_id, event.chat_id, send_at, escalation_count=event.escalation_count + 1
