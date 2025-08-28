@@ -42,6 +42,8 @@ class TestNudgeHandlers:
         user_id = uuid4()
         chat_id = 12345
         event = events.NudgeUser(user_id=user_id, chat_id=chat_id, escalation_count=1, session_type="work")
+        mock_user = orm.User(id=user_id, telegram_chat_id=str(chat_id), timezone="UTC")
+        mock_db_session.query.return_value.filter_by.return_value.first.return_value = mock_user
 
         mock_db_session.query.return_value.filter.return_value.count.return_value = 1
         mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = orm.PomodoroSession(end_time=datetime.now(timezone.utc))
@@ -65,31 +67,80 @@ class TestNudgeHandlers:
             )
 
     @pytest.mark.asyncio
-    async def test_handle_nudge_schedules_next_nudge(self, mock_db_session):
+    async def test_handle_nudge_schedules_next_nudge_with_scheduler_agent(self, mock_db_session):
         # Arrange
         user_id = uuid4()
         chat_id = 12345
         event = events.NudgeUser(user_id=user_id, chat_id=chat_id, escalation_count=1, session_type="work")
 
+        mock_user = orm.User(id=user_id, telegram_chat_id=str(chat_id), timezone="UTC")
+        mock_db_session.query.return_value.filter_by.return_value.first.return_value = mock_user
+
         mock_db_session.query.return_value.filter.return_value.count.return_value = 1
-        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = orm.PomodoroSession(end_time=datetime.now(timezone.utc))
+        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = orm.PomodoroSession(
+            end_time=datetime.now(timezone.utc))
 
         with patch('tomato_ai.handlers.get_session') as mock_get_session, \
-             patch('tomato_ai.handlers.negotiation_agent') as mock_agent, \
-             patch('tomato_ai.adapters.telegram.get_telegram_notifier'):
-
+                patch('tomato_ai.handlers.negotiation_agent') as mock_negotiation_agent, \
+                patch('tomato_ai.handlers.get_scheduler_agent') as mock_get_scheduler_agent, \
+                patch('tomato_ai.handlers.ReminderService') as mock_reminder_service:
             mock_get_session.return_value = iter([mock_db_session])
-            mock_agent.structured_output.return_value = PomodoroScheduleNextAction(time="15m")
-
+            mock_negotiation_agent.structured_output.return_value = PomodoroScheduleNextAction(time="later")
+            mock_scheduler_agent = MagicMock()
+            mock_scheduler_agent.return_value = "30"
+            mock_get_scheduler_agent.return_value = mock_scheduler_agent
+            mock_reminder_service_instance = mock_reminder_service.return_value
             # Act
             await handle_nudge(event)
 
             # Assert
-            mock_db_session.add.assert_called_once()
-            added_reminder = mock_db_session.add.call_args[0][0]
-            assert isinstance(added_reminder, orm.Reminder)
-            assert added_reminder.user_id == user_id
-            assert added_reminder.escalation_count == 2
+            mock_get_scheduler_agent.assert_called_once_with(str(chat_id))
+            mock_scheduler_agent.assert_called_once()
+            mock_reminder_service_instance.schedule_reminder.assert_called_once()
+
+            # Check the scheduled time
+            args, _ = mock_reminder_service_instance.schedule_reminder.call_args
+            send_at = args[2]
+            expected_send_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+            assert (expected_send_at - send_at).total_seconds() < 5  # Allow for small delay
+
+    @pytest.mark.asyncio
+    async def test_handle_nudge_schedules_next_nudge_with_scheduler_agent_failure(self, mock_db_session):
+        # Arrange
+        user_id = uuid4()
+        chat_id = 12345
+        event = events.NudgeUser(user_id=user_id, chat_id=chat_id, escalation_count=1, session_type="work")
+
+        mock_user = orm.User(id=user_id, telegram_chat_id=str(chat_id), timezone="UTC")
+        mock_db_session.query.return_value.filter_by.return_value.first.return_value = mock_user
+
+        mock_db_session.query.return_value.filter.return_value.count.return_value = 1
+        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = orm.PomodoroSession(
+            end_time=datetime.now(timezone.utc))
+
+        with patch('tomato_ai.handlers.get_session') as mock_get_session, \
+                patch('tomato_ai.handlers.negotiation_agent') as mock_negotiation_agent, \
+                patch('tomato_ai.handlers.get_scheduler_agent') as mock_get_scheduler_agent, \
+                patch('tomato_ai.handlers.ReminderService') as mock_reminder_service:
+            mock_get_session.return_value = iter([mock_db_session])
+            mock_negotiation_agent.structured_output.return_value = PomodoroScheduleNextAction(time="later")
+            mock_scheduler_agent = MagicMock()
+            mock_scheduler_agent.return_value = "not a number"  # Simulate failure
+            mock_get_scheduler_agent.return_value = mock_scheduler_agent
+            mock_reminder_service_instance = mock_reminder_service.return_value
+            # Act
+            await handle_nudge(event)
+
+            # Assert
+            mock_get_scheduler_agent.assert_called_once_with(str(chat_id))
+            mock_scheduler_agent.assert_called_once()
+            mock_reminder_service_instance.schedule_reminder.assert_called_once()
+
+            # Check the scheduled time (should be default 15 minutes)
+            args, _ = mock_reminder_service_instance.schedule_reminder.call_args
+            send_at = args[2]
+            expected_send_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+            assert (expected_send_at - send_at).total_seconds() < 5  # Allow for small delay
 
     @pytest.mark.asyncio
     async def test_handle_nudge_max_escalations(self, mock_db_session):
