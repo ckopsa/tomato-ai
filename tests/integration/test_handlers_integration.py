@@ -1,18 +1,15 @@
-import asyncio
 import uuid
 from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, AsyncMock
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
 from tomato_ai.adapters import orm
-from tomato_ai.adapters.database import get_session
 from tomato_ai.adapters.orm import Base
 from tomato_ai.config import settings
 from tomato_ai.domain import events
-from tomato_ai.domain.agent_actions import TelegramMessageAction, PomodoroScheduleNextAction
 from tomato_ai.handlers import (
     send_telegram_notification_on_start, handle_nudge, start_session_command, not_now_button,
     send_telegram_notification, send_telegram_notification_on_expiration, schedule_nudge_on_session_completed,
@@ -176,7 +173,24 @@ class TestHandlerIntegration:
         dbsession.add(user)
         dbsession.commit()
 
-        event = events.NudgeUser(user_id=user_id, chat_id=int(settings.TELEGRAM_CHAT_ID), escalation_count=1, session_type="work")
+        event = events.NudgeUser(user_id=user_id, chat_id=int(settings.TELEGRAM_CHAT_ID), escalation_count=1,
+                                 session_type="work")
+
+        with patch("tomato_ai.handlers.get_session", return_value=iter([dbsession])):
+            # Act & Assert
+            await handle_nudge(event)
+
+    @pytest.mark.asyncio
+    async def test_handle_nudge_escalates(self, dbsession: Session):
+        # Arrange
+        user_id = uuid.uuid4()
+        telegram_chat_id = settings.TELEGRAM_CHAT_ID
+        user = orm.User(id=user_id, telegram_chat_id=telegram_chat_id, timezone="UTC")
+        dbsession.add(user)
+        dbsession.commit()
+
+        event = events.NudgeUser(user_id=user_id, chat_id=int(settings.TELEGRAM_CHAT_ID), escalation_count=1,
+                                 session_type="work")
 
         with patch("tomato_ai.handlers.get_session", return_value=iter([dbsession])):
             # Act & Assert
