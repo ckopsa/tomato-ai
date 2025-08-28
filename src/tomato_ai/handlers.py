@@ -1,6 +1,7 @@
 import logging
 import zoneinfo
 from datetime import datetime, timezone, timedelta
+from pydantic import BaseModel
 from time import strftime
 
 from strands import Agent

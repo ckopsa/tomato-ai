@@ -86,16 +86,20 @@ class TestNudgeHandlers:
                 patch('tomato_ai.handlers.ReminderService') as mock_reminder_service:
             mock_get_session.return_value = iter([mock_db_session])
             mock_negotiation_agent.structured_output.return_value = PomodoroScheduleNextAction(time="later")
+
             mock_scheduler_agent = MagicMock()
-            mock_scheduler_agent.return_value = "30"
+            delay_container = MagicMock()
+            delay_container.delay_in_minutes = 30
+            mock_scheduler_agent.structured_output.return_value = delay_container
             mock_get_scheduler_agent.return_value = mock_scheduler_agent
+
             mock_reminder_service_instance = mock_reminder_service.return_value
             # Act
             await handle_nudge(event)
 
             # Assert
             mock_get_scheduler_agent.assert_called_once_with(str(chat_id))
-            mock_scheduler_agent.assert_called_once()
+            mock_scheduler_agent.structured_output.assert_called_once()
             mock_reminder_service_instance.schedule_reminder.assert_called_once()
 
             # Check the scheduled time
@@ -124,16 +128,18 @@ class TestNudgeHandlers:
                 patch('tomato_ai.handlers.ReminderService') as mock_reminder_service:
             mock_get_session.return_value = iter([mock_db_session])
             mock_negotiation_agent.structured_output.return_value = PomodoroScheduleNextAction(time="later")
+
             mock_scheduler_agent = MagicMock()
-            mock_scheduler_agent.return_value = "not a number"  # Simulate failure
+            mock_scheduler_agent.structured_output.side_effect = ValueError("Could not parse delay")
             mock_get_scheduler_agent.return_value = mock_scheduler_agent
+
             mock_reminder_service_instance = mock_reminder_service.return_value
             # Act
             await handle_nudge(event)
 
             # Assert
             mock_get_scheduler_agent.assert_called_once_with(str(chat_id))
-            mock_scheduler_agent.assert_called_once()
+            mock_scheduler_agent.structured_output.assert_called_once()
             mock_reminder_service_instance.schedule_reminder.assert_called_once()
 
             # Check the scheduled time (should be default 15 minutes)
