@@ -67,8 +67,8 @@ def mock_update_and_context():
     not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID,
     reason="TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set in .env for integration tests"
 )
-@pytest.mark.asyncio
 class TestHandlerIntegration:
+    @pytest.mark.asyncio
     async def test_send_telegram_notification_on_start(self, dbsession: Session):
         # Arrange
         user_id = uuid.uuid4()
@@ -77,16 +77,13 @@ class TestHandlerIntegration:
         dbsession.add(user)
         dbsession.commit()
 
-        event = events.SessionStarted(
-            user_id=user_id, session_id=uuid.uuid4(), session_type="work", start_time=datetime.now(timezone.utc),
-            end_time=datetime.now(timezone.utc) + timedelta(minutes=25), duration=timedelta(minutes=25),
-            state="started", task_id=None, expires_at=None, pause_start_time=None, total_paused_duration=None,
-        )
+        event = events.SessionStarted(user_id=user_id, session_id=uuid.uuid4(), session_type="work")
 
         with patch("tomato_ai.handlers.get_session", return_value=iter([dbsession])):
             # Act & Assert: This should run without errors
             await send_telegram_notification_on_start(event)
 
+    @pytest.mark.asyncio
     async def test_send_telegram_notification_on_session_completed(self, dbsession: Session):
         # Arrange
         user_id = uuid.uuid4()
@@ -101,6 +98,7 @@ class TestHandlerIntegration:
             # Act & Assert: This should run without errors
             await send_telegram_notification(event)
 
+    @pytest.mark.asyncio
     async def test_send_telegram_notification_on_expiration(self, dbsession: Session):
         # Arrange
         user_id = uuid.uuid4()
@@ -120,7 +118,11 @@ class TestHandlerIntegration:
         user_id = uuid.uuid4()
         session_id = uuid.uuid4()
         chat_id = int(settings.TELEGRAM_CHAT_ID)
-        session = orm.PomodoroSession(session_id=session_id, user_id=user_id, chat_id=chat_id)
+        session = orm.PomodoroSession(
+            session_id=session_id, user_id=user_id, chat_id=chat_id, state="completed",
+            start_time=datetime.now(timezone.utc), end_time=datetime.now(timezone.utc) + timedelta(minutes=25),
+            duration=timedelta(minutes=25)
+        )
         dbsession.add(session)
         dbsession.commit()
 
@@ -143,11 +145,7 @@ class TestHandlerIntegration:
         dbsession.add(reminder)
         dbsession.commit()
 
-        event = events.SessionStarted(
-            user_id=user_id, session_id=uuid.uuid4(), session_type="work", start_time=datetime.now(timezone.utc),
-            end_time=datetime.now(timezone.utc) + timedelta(minutes=25), duration=timedelta(minutes=25),
-            state="started", task_id=None, expires_at=None, pause_start_time=None, total_paused_duration=None,
-        )
+        event = events.SessionStarted(user_id=user_id, session_id=uuid.uuid4(), session_type="work")
 
         with patch("tomato_ai.handlers.get_session", return_value=iter([dbsession])):
             # Act
@@ -155,8 +153,9 @@ class TestHandlerIntegration:
 
             # Assert
             reminder = dbsession.query(orm.Reminder).filter_by(user_id=user_id).first()
-            assert reminder.cancelled_at is not None
+            assert reminder.state == "cancelled"
 
+    @pytest.mark.asyncio
     async def test_handle_message(self, dbsession: Session, mock_update_and_context):
         update, context = mock_update_and_context
         telegram_chat_id = settings.TELEGRAM_CHAT_ID
@@ -168,6 +167,7 @@ class TestHandlerIntegration:
             await handle_message(update, context)
             context.bot.send_message.assert_awaited_once()
 
+    @pytest.mark.asyncio
     async def test_handle_nudge_sends_message(self, dbsession: Session):
         # Arrange
         user_id = uuid.uuid4()
@@ -176,16 +176,13 @@ class TestHandlerIntegration:
         dbsession.add(user)
         dbsession.commit()
 
-        event = events.NudgeUser(user_id=user_id, chat_id=int(telegram_chat_id), escalation_count=1, session_type="work")
+        event = events.NudgeUser(user_id=user_id, chat_id=int(settings.TELEGRAM_CHAT_ID), escalation_count=1, session_type="work")
 
-        with patch("tomato_ai.handlers.get_session", return_value=iter([dbsession])), \
-             patch('tomato_ai.handlers.negotiation_agent') as mock_agent:
-
-            mock_agent.structured_output.return_value = TelegramMessageAction(text="This is a test nudge message.")
-
+        with patch("tomato_ai.handlers.get_session", return_value=iter([dbsession])):
             # Act & Assert
             await handle_nudge(event)
 
+    @pytest.mark.asyncio
     async def test_start_session_command(self, dbsession: Session, mock_update_and_context):
         update, context = mock_update_and_context
         telegram_chat_id = settings.TELEGRAM_CHAT_ID
@@ -195,6 +192,7 @@ class TestHandlerIntegration:
         with patch("tomato_ai.handlers.get_session", return_value=iter([dbsession])):
             await start_session_command(update, context, "work")
 
+    @pytest.mark.asyncio
     async def test_not_now_button(self, dbsession: Session, mock_update_and_context):
         update, context = mock_update_and_context
         telegram_chat_id = settings.TELEGRAM_CHAT_ID
