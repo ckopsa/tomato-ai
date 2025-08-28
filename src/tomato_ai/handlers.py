@@ -3,6 +3,7 @@ import zoneinfo
 from datetime import datetime, timezone, timedelta
 from time import strftime
 
+from pydantic import BaseModel
 from strands import Agent
 from strands.session.file_session_manager import FileSessionManager
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
