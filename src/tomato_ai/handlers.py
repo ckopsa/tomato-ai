@@ -246,7 +246,11 @@ async def handle_nudge(event: events.NudgeUser):
             "user_history": context,
         }
         try:
-            delay_in_minutes = int(str(scheduler_agent(str(scheduler_context))))
+            class DelayContainer(BaseModel):
+                delay_in_minutes: int
+                
+            delay_container = scheduler_agent.structured_output(DelayContainer, str(scheduler_context))
+            delay_in_minutes = int(delay_container.delay_in_minutes)
         except ValueError:
             logger.warning("Could not parse delay from scheduler agent, defaulting to 15 minutes.")
             delay_in_minutes = 15
