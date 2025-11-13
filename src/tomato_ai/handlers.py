@@ -4,22 +4,54 @@ from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
 from time import strftime
 
-from strands import Agent
-from strands.session.file_session_manager import FileSessionManager
+from pydantic_ai import Agent
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram import WebAppInfo
 from telegram.ext import CallbackContext
 
 from tomato_ai.adapters import telegram, orm
 from tomato_ai.adapters.database import get_session
-from tomato_ai.agents import negotiation_agent, turbo_20_ollama_model, turbo_120_ollama_model
+from tomato_ai.agents import negotiation_agent, TelegramMessageAction, PomodoroScheduleNextAction, PomodoroStartAction
 from tomato_ai.config import settings
 from tomato_ai.domain import events
-from tomato_ai.domain.agent_actions import AgentAction, PomodoroScheduleNextAction, PomodoroStartAction, \
-    TelegramMessageAction
 from tomato_ai.domain.services import SessionManager, ReminderService
 
 logger = logging.getLogger(__name__)
+
+agent_sessions: dict[str, Agent] = {}
+scheduler_agent_sessions: dict[str, Agent] = {}
+
+def get_agent(session_id: str) -> Agent:
+    if session_id not in agent_sessions:
+        agent_sessions[session_id] = Agent(
+            "ollama:gpt-oss:20b",
+            instructions="""
+            You are a small cog in a large pomodoro timer machine.
+
+            You are responsible for notifying the user about the events of the pomodor session.
+
+            Your responses should be only the message you want to send to the user.
+            """
+        )
+    return agent_sessions[session_id]
+
+class DelayContainer(BaseModel):
+    delay_in_minutes: int
+
+def get_scheduler_agent(session_id: str) -> Agent[DelayContainer]:
+    if session_id not in scheduler_agent_sessions:
+        scheduler_agent_sessions[session_id] = Agent[DelayContainer](
+            "ollama:gpt-oss:120b",
+            instructions="""
+            You are responsible for scheduling reminders for the user. You want the user to be diligent in their adherence to pomodoro sessions.
+            You should be stubborn, but not annoying in reminding the user to stay in their pomodoro workflow.
+
+            Use whatever context you have to decide the delay for the reminder.
+
+            Using the is to decide a single number 'delay_in_minutes' for the reminder.
+            """,
+        )
+    return scheduler_agent_sessions[session_id]
 
 
 def parse_time(time_str: str) -> timedelta:
@@ -31,35 +63,6 @@ def parse_time(time_str: str) -> timedelta:
         return timedelta(days=1)
     else:
         return timedelta(minutes=15)  # default
-
-
-def get_agent(session_id: str):
-    return Agent(
-        model=turbo_20_ollama_model,
-        session_manager=FileSessionManager(session_id),
-        system_prompt="""
-    You are a small cog in a large pomodoro timer machine.
-    
-    You are responsible for notifying the user about the events of the pomodor session.
-    
-    Your responses should be only the message you want to send to the user.
-    """
-    )
-
-
-def get_scheduler_agent(session_id: str):
-    return Agent(
-        model=turbo_120_ollama_model,
-        session_manager=FileSessionManager(session_id),
-        system_prompt="""
-        You are responsible for scheduling reminders for the user. You want the user to be diligent in their adherence to pomodoro sessions.
-        You should be stubborn, but not annoying in reminding the user to stay in their pomodoro workflow.
-        
-        Use whatever context you have to decide the delay for the reminder.
-        
-        Using the is to decide a single number 'delay_in_minutes' for the reminder.
-        """,
-    )
 
 
 def log_event(event: events.Event):
@@ -80,10 +83,11 @@ async def send_telegram_notification(event: events.SessionCompleted):
         return
 
     if notifier := telegram.get_telegram_notifier():
+        agent = get_agent(str(user.telegram_chat_id))
+        result = await agent.run(f"The user completed the pomodoro session of type {event.session_type}!")
         await notifier.send_message(
             chat_id=user.telegram_chat_id,
-            message=str(get_agent(str(user.telegram_chat_id))(
-                f"The user completed the pomodoro session of type {event.session_type}!")),
+            message=result.output,
         )
 
 
@@ -98,10 +102,11 @@ async def send_telegram_notification_on_start(event: events.SessionStarted):
         return
 
     if notifier := telegram.get_telegram_notifier():
+        agent = get_agent(str(user.telegram_chat_id))
+        result = await agent.run(f"The user started a pomodoro session of type {event.session_type}!")
         await notifier.send_message(
             chat_id=user.telegram_chat_id,
-            message=str(
-                get_agent(str(user.telegram_chat_id))(f"The user started a pomodoro session of type {event.session_type}!")),
+            message=result.output,
         )
 
 
@@ -198,26 +203,8 @@ async def handle_nudge(event: events.NudgeUser):
     }
 
     # 2. Call the negotiation agent
-    agent = negotiation_agent
-    wrapper_action = agent.structured_output(AgentAction, str(context))
-
-    # Construct the correct action object based on action_type
-    if wrapper_action.action == "telegram_message":
-        action = TelegramMessageAction(
-            text=wrapper_action.text,
-            buttons=wrapper_action.buttons
-        )
-    elif wrapper_action.action == "pomodoro_schedule_next":
-        action = PomodoroScheduleNextAction(
-            time=wrapper_action.time
-        )
-    elif wrapper_action.action == "pomodoro_start":
-        action = PomodoroStartAction(
-            duration=wrapper_action.duration
-        )
-    else:
-        logger.warning(f"Unknown action type from agent: {wrapper_action.action}")
-        return  # Exit if action type is unknown
+    result = await negotiation_agent.run(str(context))
+    action = result.output
 
     # 3. Execute the action
     if isinstance(action, TelegramMessageAction):
@@ -247,12 +234,10 @@ async def handle_nudge(event: events.NudgeUser):
             "user_history": context,
         }
         try:
-            class DelayContainer(BaseModel):
-                delay_in_minutes: int
-                
-            delay_container = scheduler_agent.structured_output(DelayContainer, str(scheduler_context))
+            result = await scheduler_agent.run(str(scheduler_context))
+            delay_container = result.output
             delay_in_minutes = int(delay_container.delay_in_minutes)
-        except ValueError:
+        except Exception:
             logger.warning("Could not parse delay from scheduler agent, defaulting to 15 minutes.")
             delay_in_minutes = 15
 
@@ -271,7 +256,7 @@ async def handle_nudge(event: events.NudgeUser):
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
     else:
-        logger.warning(f"Unhandled action type: {action.action}")
+        logger.warning(f"Unhandled action type: {action}")
 
 
 async def start_session_command(update: Update, context: CallbackContext, session_type: str) -> None:
@@ -312,12 +297,6 @@ async def start_session_command(update: Update, context: CallbackContext, sessio
         db_session.commit()
         db_session.refresh(orm_session)
 
-        # We don't publish the SessionStarted event to avoid a duplicate notification
-        # because we are sending a direct message to the user.
-        # for event in new_session.events:
-        #     if not isinstance(event, events.SessionStarted):
-        #         await event_bus.publish(event)
-
         if (notifier := telegram.get_telegram_notifier()):
             duration_minutes = new_session.duration.total_seconds() / 60
             start_ts = int(new_session.start_time.timestamp())
@@ -328,7 +307,6 @@ async def start_session_command(update: Update, context: CallbackContext, sessio
                 f"It will last for {duration_minutes:.0f} minutes."
             )
 
-            # Inline keyboard with WebApp button
             keyboard = [
                 [InlineKeyboardButton(
                     text="⏳ Open Timer",
@@ -370,8 +348,9 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
     """
     if update.message and update.message.text:
         user_message = update.message.text
-        agent_response = get_agent(str(update.effective_chat.id))(user_message)
-        response = str(agent_response)
+        agent = get_agent(str(update.effective_chat.id))
+        result = await agent.run(user_message)
+        response = result.output
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
 
 

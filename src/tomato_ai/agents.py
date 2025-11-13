@@ -1,35 +1,35 @@
-from tomato_ai.config import settings
-from strands import Agent
-from strands.models.ollama import OllamaModel
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent
 
-turbo_120_ollama_model = OllamaModel(
-    ollama_client_args={
-        "headers": {
-            "Authorization": settings.OLLAMA_API_KEY,
-        },
-    },
-    host="https://ollama.com",
-    model_id="gpt-oss:120b",
-)
+class TelegramMessageAction(BaseModel):
+    action: str = Field("telegram_message", Literal=True)
+    text: str
+    buttons: list[str] | None = None
 
-turbo_20_ollama_model = OllamaModel(
-    ollama_client_args={
-        "headers": {
-            "Authorization": settings.OLLAMA_API_KEY,
-        },
-    },
-    host="https://ollama.com",
-    model_id="gpt-oss:20b",
-)
+class PomodoroScheduleNextAction(BaseModel):
+    action: str = Field("pomodoro_schedule_next", Literal=True)
+    time: str
+
+class PomodoroStartAction(BaseModel):
+    action: str = Field("pomodoro_start", Literal=True)
+    duration: int
+
+AnyAction = TelegramMessageAction | PomodoroScheduleNextAction | PomodoroStartAction
 
 agent = Agent(
-    model=turbo_20_ollama_model,
-    system_prompt=""
+    "ollama:gpt-oss:20b",
+    instructions="""
+    You are a small cog in a large pomodoro timer machine.
+
+    You are responsible for notifying the user about the events of the pomodor session.
+
+    Your responses should be only the message you want to send to the user.
+    """
 )
 
-negotiation_agent = Agent(
-    model=turbo_120_ollama_model,
-    system_prompt="""
+negotiation_agent = Agent[AnyAction](
+    "ollama:gpt-oss:120b",
+    instructions="""
 You are a productivity coach who communicates only via Telegram. Your goal is to help the user stay focused and productive using the Pomodoro Technique.
 
 **Rules:**
